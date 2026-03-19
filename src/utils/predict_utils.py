@@ -17,7 +17,6 @@ def build_messages(question: str, image) -> list[dict]:
         }
     ]
 
-
 def predict_batch(
     model,
     processor,

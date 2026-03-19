@@ -18,31 +18,9 @@ import torch
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
 from tqdm import tqdm
 
-from utils import compute_metrics, predict_batch
+from utils import compute_metrics, predict_batch, load_model
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-# ── Model loading (same as notebook) ──────────────────────────────────────────
-
-def get_bnb_config():
-    return BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
-
-
-def load_model(model_name: str, cache_dir: str = "huggingface"):
-    model = Qwen3_5ForConditionalGeneration.from_pretrained(
-        model_name,
-        cache_dir=cache_dir,
-        quantization_config=get_bnb_config(),
-    ).to(DEVICE)
-    processor = AutoProcessor.from_pretrained(model_name, cache_dir=cache_dir)
-    processor.tokenizer.padding_side = "left"
-    return model, processor
 
 
 # ── Evaluation loop ────────────────────────────────────────────────────────────
