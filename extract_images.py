@@ -59,10 +59,62 @@ def find_caption_for_image(
     return best_caption
 
 
+SUBPART_PATTERN = re.compile(r"\(([A-Z])\)")
+
+
+def split_caption(caption: str) -> tuple[str, list[str]]:
+    """
+    Split a caption with sub-parts (A), (B), ... into a shared prefix and a list of parts.
+    Searches sequentially: finds (A) first, then (B) after that position, etc.
+    This avoids false matches like (N) or (I) used as image annotations.
+    Returns (prefix, [part1, part2, ...]), or (caption, []) if no sub-parts found.
+    """
+    matches = []
+    search_from = 0
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        pattern = re.compile(r"\(" + letter + r"\)")
+        match = pattern.search(caption, search_from)
+        if match:
+            matches.append(match)
+            search_from = match.end()
+        else:
+            break  # stop as soon as a letter in sequence is not found
+
+    if not matches:
+        return caption, []
+
+    prefix = caption[:matches[0].start()].strip()
+    parts = []
+    for i, match in enumerate(matches):
+        start = match.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(caption)
+        parts.append(caption[start:end].strip())
+
+    return prefix, parts
+
+
+def assign_subcaptions(images: list[dict], caption: str) -> None:
+    """
+    For images sharing the same caption, split into sub-parts if present
+    and assign each part in top-to-bottom, left-to-right order.
+    Falls back to the full caption if no sub-parts or count mismatches.
+    """
+    prefix, parts = split_caption(caption)
+    if not parts or len(parts) != len(images):
+        for img in images:
+            img["caption"] = caption
+        return
+
+    sorted_images = sorted(images, key=lambda im: (im["y"], im["x"]))
+    for img, part in zip(sorted_images, parts):
+        img["caption"] = f"{prefix} {part}".strip()
+
+
 def get_images_on_page(page: fitz.Page, caption_boxes: list[tuple]) -> list[dict]:
     """Return list of images with xref, position (x, y), and caption."""
-    images = []
     page_height = page.rect.height
+    images = []
+
     for img in page.get_images(full=True):
         xref = img[0]
         for rect in page.get_image_rects(xref):
@@ -73,6 +125,16 @@ def get_images_on_page(page: fitz.Page, caption_boxes: list[tuple]) -> list[dict
                 "y": round(rect.y0, 2),
                 "caption": caption,
             })
+
+    # Group images by shared caption and assign sub-parts
+    groups: dict[str, list[dict]] = {}
+    for img in images:
+        groups.setdefault(img["caption"], []).append(img)
+
+    for caption, group in groups.items():
+        if caption:
+            assign_subcaptions(group, caption)
+
     return images
 
 
