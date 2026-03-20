@@ -7,11 +7,9 @@ from io import BytesIO
 import torch
 
 import datasets
-from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
-from peft import PeftModel, LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 from trl import SFTTrainer, SFTConfig
 
-from utils import load_model
+from utils import load_base_model
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -45,6 +43,7 @@ def collate_fn(examples):
             messages,
             tokenize=False,
             add_generation_prompt=False,
+            enable_thinking=False
         )
         texts.append(text)
         images.append(example["images"][0])
@@ -63,7 +62,7 @@ def main():
     global processor
 
     ds_qa = datasets.load_dataset("flaviagiammarino/path-vqa", cache_dir="huggingface/")
-    model, processor = load_model("Qwen/Qwen3.5-0.8B", peft=True)
+    model, processor = load_base_model("Qwen/Qwen3.5-0.8B", peft=True)
     model.print_trainable_parameters()
 
     ds_qa_train = ds_qa["train"].map(
@@ -99,7 +98,7 @@ def main():
         save_total_limit=2,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
-        # report_to="wandb",
+        report_to="wandb",
         run_name="multigen-baseline",
         max_length=512,
         dataset_text_field="text",

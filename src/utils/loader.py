@@ -1,7 +1,7 @@
 import torch
 
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
-from peft import LoraConfig, TaskType, prepare_model_for_kbit_training, get_peft_model
+from peft import LoraConfig, TaskType, prepare_model_for_kbit_training, get_peft_model, PeftModel
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -26,7 +26,7 @@ def get_lora_config():
         bias="none",
     )
 
-def load_model(
+def load_base_model(
     model_name: str, 
     cache_dir: str = "huggingface",
     quantize: bool = True,
@@ -45,4 +45,11 @@ def load_model(
         model = prepare_model_for_kbit_training(model)
         model = get_peft_model(model, peft_config=get_lora_config())
     
+    return model, processor
+
+def load_lora_pretrained_model(checkpoint: str, *args, **kwargs):
+    if kwargs.get("peft", False):
+        raise ValueError
+    model, processor = load_base_model(*args, **kwargs)
+    model = PeftModel.from_pretrained(model, checkpoint)
     return model, processor

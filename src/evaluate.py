@@ -18,7 +18,7 @@ import torch
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
 from tqdm import tqdm
 
-from utils import compute_metrics, predict_batch, load_model
+from utils import compute_metrics, predict_batch, load_base_model, load_lora_pretrained_model
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -42,14 +42,15 @@ def evaluate(model, processor, split: datasets.Dataset, batch_size: int, max_new
         shuffle=False,
     )
 
-    all_preds, all_refs = [], []
+    all_preds, all_refs, all_quests = [], [], []
 
     for batch in tqdm(loader, desc="Evaluating"):
         preds = predict_batch(model, processor, batch, DEVICE, max_new_tokens=max_new_tokens)
         all_preds.extend(preds)
         all_refs.extend([a.strip().lower() for a in batch["answer"]])
+        all_quests.extend([a.strip().lower() for a in batch["question"]])
 
-    return all_preds, all_refs
+    return all_preds, all_refs, all_quests
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -63,15 +64,21 @@ def parse_args():
     parser.add_argument("--max_new_tokens", type=int, default=64)
     parser.add_argument("--max_samples", type=int, default=None, help="Cap dataset size (for quick runs)")
     parser.add_argument("--output", default="results/eval_results.json")
+    parser.add_argument("--checkpoint", default=None)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    print(f"Loading model: {args.model_name}")
-    model, processor = load_model(args.model_name, args.cache_dir)
-    model.eval()
+    if args.checkpoint is None:
+        print(f"Loading model: {args.model_name}")
+        model, processor = load_base_model(args.model_name, args.cache_dir)
+        model.eval()
+    else:
+        print(f"Loading pretrained model: {args.checkpoint} from {args.model_name}")
+        model, processor = load_lora_pretrained_model(args.checkpoint, args.model_name, args.cache_dir)
+        model.eval()
 
     print(f"Loading dataset split: {args.split}")
     ds = datasets.load_dataset("flaviagiammarino/path-vqa", cache_dir=args.cache_dir)
@@ -81,7 +88,7 @@ def main():
         split = split.select(range(min(args.max_samples, len(split))))
         print(f"Using {len(split)} samples")
 
-    preds, refs = evaluate(model, processor, split, args.batch_size, args.max_new_tokens)
+    preds, refs, quests = evaluate(model, processor, split, args.batch_size, args.max_new_tokens)
     metrics = compute_metrics(preds, refs)
 
     print("\n── Results ──────────────────────────")
@@ -89,7 +96,7 @@ def main():
         print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-    payload = {"args": vars(args), "metrics": metrics, "predictions": preds, "references": refs}
+    payload = {"args": vars(args), "metrics": metrics, "predictions": preds, "references": refs, "questions": quests}
     with open(args.output, "w") as f:
         json.dump(payload, f, indent=2)
     print(f"\nSaved to {args.output}")
