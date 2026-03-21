@@ -6,6 +6,9 @@ import pandas as pd
 from PIL import Image
 
 
+COURTESY_PATTERN = re.compile(r"\(Courtesy.*?\)", re.IGNORECASE)
+
+
 def hash_image(path):
     with open(path, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
@@ -14,7 +17,7 @@ def hash_image(path):
 def is_too_small(path, min_w=90, min_h=75):
     with Image.open(path) as img:
         w, h = img.size
-        return w < min_w or h < min_h
+    return w < min_w or h < min_h
 
 
 def has_multiple_subfigures(caption):
@@ -68,12 +71,18 @@ def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75):
     df = df[~df["id"].isin(too_small)]
     df = df[df["caption"].notna() & (df["caption"].astype(str).str.strip() != "")]
     df = df[~df["caption"].apply(has_multiple_subfigures)]
+
+    # Clean courtesy attributions from captions
+    n_courtesy = df["caption"].str.contains(COURTESY_PATTERN, na=False).sum()
+    df["caption"] = df["caption"].str.replace(COURTESY_PATTERN, "", regex=True).str.strip()
+
     df.to_csv(csv_path, index=False)
 
     print(f"Removed {n_duplicates} duplicate(s)")
     print(f"Removed {n_too_small} too small image(s)")
     print(f"Removed {n_no_caption} image(s) with empty caption")
     print(f"Removed {n_multi_subfig} image(s) with multiple sub-figures in caption")
+    print(f"Cleaned courtesy attributions from {n_courtesy} caption(s)")
     print(f"Total rows removed: {n_duplicates + n_too_small + n_no_caption + n_multi_subfig}")
 
 
@@ -84,5 +93,4 @@ if __name__ == "__main__":
     parser.add_argument("--min-width", type=int, default=90)
     parser.add_argument("--min-height", type=int, default=75)
     args = parser.parse_args()
-
     filter_dataset(args.dataset_dir, args.remove_dir, args.min_width, args.min_height)

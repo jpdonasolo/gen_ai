@@ -1,5 +1,8 @@
+import os
+
 import torch
 
+import datasets
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
 from peft import LoraConfig, TaskType, prepare_model_for_kbit_training, get_peft_model, PeftModel
 
@@ -53,3 +56,30 @@ def load_lora_pretrained_model(checkpoint: str, *args, **kwargs):
     model, processor = load_base_model(*args, **kwargs)
     model = PeftModel.from_pretrained(model, checkpoint)
     return model, processor
+def add_prefix(obs):
+    question: str = obs["question"]
+    if question.startswith("does") or question.startswith("is"):
+        question = "answer strictly with yes or no. " + question
+    else:
+        question = "answer with as few words as possible. " + question
+    obs["question"] = question
+    return obs
+
+def load_dataset(
+    add_prefixes: bool = False,
+    *args,
+    **kwargs
+):
+    def add_prefix(obs):
+        question: str = obs["question"]
+        if question.startswith("is") or question.startswith("does"):
+            question = "answer strictly with yes or no. " + question
+        else:
+            question = "use as few words as possible. do not reason about the problem. " + question
+        obs["question"] = question
+        return obs
+
+    ds = datasets.load_dataset("flaviagiammarino/path-vqa", *args, **kwargs)
+    if add_prefixes:
+        ds = ds.map(add_prefix, num_proc=os.cpu_count())
+    return ds
