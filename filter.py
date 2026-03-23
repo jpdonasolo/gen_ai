@@ -7,7 +7,7 @@ from PIL import Image
 
 
 COURTESY_PATTERN = re.compile(r"\(Courtesy.*?\)", re.IGNORECASE)
-
+FIG_PATTERN = re.compile(r"^Fig\.\s*\d+[\.\d]*\.?\s*", re.IGNORECASE)
 
 def hash_image(path):
     with open(path, "rb") as f:
@@ -53,11 +53,10 @@ def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75):
     n_duplicates = df["id"].isin(duplicates).sum()
     n_too_small = df["id"].isin(too_small).sum()
     n_no_caption = (df["caption"].isna() | (df["caption"].astype(str).str.strip() == "")).sum()
-    
+
     multi_subfig_mask = df["caption"].apply(has_multiple_subfigures)
     n_multi_subfig = multi_subfig_mask.sum()
 
-    # Remove images with empty captions from disk
     no_caption_stems = df[df["caption"].isna() | (df["caption"].astype(str).str.strip() == "")]["id"].tolist()
     multi_subfig_stems = df[multi_subfig_mask]["id"].tolist()
 
@@ -72,9 +71,11 @@ def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75):
     df = df[df["caption"].notna() & (df["caption"].astype(str).str.strip() != "")]
     df = df[~df["caption"].apply(has_multiple_subfigures)]
 
-    # Clean courtesy attributions from captions
+    # Clean courtesy attributions and leading figure labels from captions
     n_courtesy = df["caption"].str.contains(COURTESY_PATTERN, na=False).sum()
+    n_fig_prefix = df["caption"].str.contains(FIG_PATTERN, na=False).sum()
     df["caption"] = df["caption"].str.replace(COURTESY_PATTERN, "", regex=True).str.strip()
+    df["caption"] = df["caption"].str.replace(FIG_PATTERN, "", regex=True).str.strip()
 
     df.to_csv(csv_path, index=False)
 
@@ -83,8 +84,8 @@ def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75):
     print(f"Removed {n_no_caption} image(s) with empty caption")
     print(f"Removed {n_multi_subfig} image(s) with multiple sub-figures in caption")
     print(f"Cleaned courtesy attributions from {n_courtesy} caption(s)")
+    print(f"Cleaned figure prefixes from {n_fig_prefix} caption(s)")
     print(f"Total rows removed: {n_duplicates + n_too_small + n_no_caption + n_multi_subfig}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Remove duplicate, small, or malformed images from a dataset.")
