@@ -195,13 +195,14 @@ def load_already_processed_relations(output_path: Path) -> set[tuple]:
 # Step 1 — Entity extraction
 # ---------------------------------------------------------------------------
 
-def extract_entities(images_dir: Path, output_path: Path, model_name: str, cache_dir: str, quantize: bool, max_new_tokens: int, max_retries: int):
+def extract_entities(images_dir: Path, output_path: Path, model_name: str, cache_dir: str, quantize: bool, max_new_tokens: int, max_retries: int, start: int = 0, end: int = None):
     csv_path = images_dir / "images.csv"
     if not csv_path.exists():
         sys.exit(f"CSV not found: {csv_path}")
 
     df = pd.read_csv(csv_path)
     df = df[df["id"].apply(lambda x: (images_dir / f"{x}.jpg").exists())].reset_index(drop=True)
+    df = df.iloc[start:end].reset_index(drop=True)
     print(f"Found {len(df)} images with captions.")
 
     already_done = load_already_processed(output_path)
@@ -258,6 +259,8 @@ def generate_relations(
     cache_dir: str,
     quantize: bool,
     max_new_tokens: int,
+    start: int = 0,
+    end: int = None,
 ):
     """For each image, generate pairwise entity-relation discussions."""
     # Load entity records
@@ -265,6 +268,8 @@ def generate_relations(
     with open(entities_path) as f:
         for line in f:
             records.append(json.loads(line))
+
+    records = records[start:end]
 
     already_done = load_already_processed_relations(output_path)
 
@@ -330,14 +335,18 @@ def parse_args():
                         help="Directory with images and images.csv (default: output_images/)")
     parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B",
                         help="HuggingFace model name (default: Qwen/Qwen3.5-9B)")
-    parser.add_argument("--cache-dir", type=str, default="huggingface",
-                        help="HuggingFace cache dir (default: huggingface/)")
+    parser.add_argument("--cache-dir", type=str, default="/Data/joao.giordani-donasolo/huggingface",
+                        help="HuggingFace cache dir")
     parser.add_argument("--no-quantize", action="store_true",
                         help="Disable 4-bit NF4 quantization")
     parser.add_argument("--max-new-tokens", type=int, default=512,
                         help="Max tokens to generate per image (default: 512)")
     parser.add_argument("--max-retries", type=int, default=3,
                         help="Max JSON parse retries per image (default: 3)")
+    parser.add_argument("--start", type=int, default=0,
+                        help="First image index to process, inclusive (default: 0)")
+    parser.add_argument("--end", type=int, default=None,
+                        help="Last image index to process, exclusive (default: all)")
     return parser.parse_args()
 
 
@@ -354,6 +363,8 @@ if __name__ == "__main__":
         quantize=not args.no_quantize,
         max_new_tokens=args.max_new_tokens,
         max_retries=args.max_retries,
+        start=args.start,
+        end=args.end,
     )
     generate_relations(
         images_dir=args.images_dir,
@@ -363,4 +374,6 @@ if __name__ == "__main__":
         cache_dir=args.cache_dir,
         quantize=not args.no_quantize,
         max_new_tokens=args.max_new_tokens,
+        start=args.start,
+        end=args.end,
     )
