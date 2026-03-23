@@ -1,18 +1,28 @@
 """
-Entity extraction from pathology images using a VLM (Qwen3.5-9B).
-Adapted from EntiGraph (Yang et al., 2025) — Step 1: Entity Extraction.
+Entity extraction and relation generation from pathology images using a VLM (Qwen2.5-VL).
+Adapted from EntiGraph (Yang et al., 2025) — Steps 1 & 2: Entity Extraction + Relation Generation.
 
-For each image + caption pair, the model extracts a structured JSON with:
-  - summary: brief description of the image
-  - entities: list of salient visual/conceptual entities
+Step 1 – Entity extraction:
+  For each image + caption pair, the model extracts a structured JSON with:
+    - summary: brief description of the image
+    - entities: list of salient visual/conceptual entities
 
-Results are saved incrementally to a JSONL file so the script is resumable.
+Step 2 – Relation generation:
+  For each pair of entities extracted in Step 1, the model
+  generates free-text discussions of how those entities relate within the image/caption.
+
+Results are saved incrementally to JSONL files so both steps are resumable.
 
 Usage:
-    python extract_entities.py --images-dir output_images/ [--output output_images/entities.jsonl]
+    # Step 1 — extract entities
+    python extract_entities.py --images-dir output_images/ --mode entities
+
+    # Step 2 — generate relations (reads entities JSONL produced by step 1)
+    python extract_entities.py --images-dir output_images/ --mode relations [--triples]
 """
 
 import argparse
+import itertools
 import json
 import re
 import sys
@@ -21,12 +31,11 @@ from pathlib import Path
 import pandas as pd
 import PIL.Image
 import torch
-import sys
 sys.path.append(str(Path(__file__).parent / "src"))
 from utils.loader import load_base_model
 
 # ---------------------------------------------------------------------------
-# Prompt
+# Prompts
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT_ENTITY_EXTRACTION = """
 As a knowledge analyzer, your task is to dissect and understand an image-caption pair provided by the user. You are required to perform the following steps:
@@ -45,29 +54,48 @@ Here is the format you should use for your response:
 }
 """
 
+SYSTEM_PROMPT_EPIGRAPH = """
+You will act as a knowledge analyzer tasked with dissecting an image-caption pair provided by the user. Your role involves two main objectives:
+
+1. Rephrasing Content: The user will identify two specific entities mentioned in the pair. You are required to rephrase the content of the caption twice:
+    * Once, emphasizing the first entity.
+    * Again, emphasizing the second entity.
+2. Analyzing Interactions: Discuss how the two specified entities interact within the context of the image-caption pair and how they relate to the image.
+
+Your responses should provide clear segregation between the rephrased content and the interaction analysis. Ensure each section of the output include sufficient context, ideally referencing the image ID to maintain clarity about the discussion's focus. Here is the format you should follow for your response:
+### Discussion of <image_id> in relation to <entity1>
+<Rephrased content focusing on the first entity>
+
+### Discussion of <image_id> in relation to <entity2>
+<Rephrased content focusing on the second entity>
+
+### Discussion of Interaction between <entity1> and <entity2> in context of <image_id>
+<Discussion on how the two entities interact within the image>
+"""
+
 # ---------------------------------------------------------------------------
-# Inference
+# Inference helpers
 # ---------------------------------------------------------------------------
 
-def build_messages(img: PIL.Image.Image, caption: str) -> list[dict]:
+def build_messages(img: PIL.Image.Image, user_prompt: str, system_prompt: str) -> list[dict]:
+    """Build a chat message list for the VLM, with a configurable system prompt."""
     return [
         {
             "role": "system",
-            "content": [{"type": "text", "text": SYSTEM_PROMPT_ENTITY_EXTRACTION}],
+            "content": [{"type": "text", "text": system_prompt}],
         },
         {
             "role": "user",
             "content": [
                 {"type": "image", "image": img},
-                {"type": "text", "text": f"### Caption:\n{caption}\n"},
+                {"type": "text", "text": user_prompt},
             ],
         },
     ]
 
 
-def generate_and_parse(model, processor, img: PIL.Image.Image, caption: str, max_new_tokens: int, max_retries: int = 3) -> dict:
-    """Generate entity extraction output, retrying up to max_retries times on JSON parse failure."""
-    messages = build_messages(img, caption)
+def _run_inference(model, processor, messages: list[dict], img: PIL.Image.Image, max_new_tokens: int, do_sample: bool = False) -> str:
+    """Tokenize, run the model, and return the decoded output string."""
     text = processor.tokenizer.apply_chat_template(
         messages,
         tokenize=False,
@@ -79,12 +107,21 @@ def generate_and_parse(model, processor, img: PIL.Image.Image, caption: str, max
     inputs = {k: v.to(device) for k, v in inputs.items()}
     input_len = inputs["input_ids"].shape[1]
 
+    with torch.inference_mode():
+        generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=do_sample)
+
+    return processor.batch_decode(
+        generated_ids[:, input_len:], skip_special_tokens=True, clean_up_tokenization_spaces=False
+    )[0]
+
+
+def generate_and_parse(model, processor, img: PIL.Image.Image, caption: str, max_new_tokens: int, max_retries: int = 3) -> dict:
+    """Generate entity extraction output (JSON), retrying up to max_retries times on parse failure."""
+    user_prompt = f"### Caption:\n{caption}\n"
+    messages = build_messages(img, user_prompt, system_prompt=SYSTEM_PROMPT_ENTITY_EXTRACTION)
+
     for attempt in range(1, max_retries + 1):
-        with torch.inference_mode():
-            generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=attempt > 1)
-        raw = processor.batch_decode(
-            generated_ids[:, input_len:], skip_special_tokens=True, clean_up_tokenization_spaces=False
-        )[0]
+        raw = _run_inference(model, processor, messages, img, max_new_tokens, do_sample=attempt > 1)
         parsed = parse_json_output(raw)
         if "parse_error" not in parsed:
             return parsed
@@ -94,24 +131,38 @@ def generate_and_parse(model, processor, img: PIL.Image.Image, caption: str, max
     return parsed
 
 
+def generate_relation(model, processor, img: PIL.Image.Image, caption: str, entities: list[str], max_new_tokens: int) -> str:
+    """Generate a free-text relation discussion for 2 or 3 entities.
+
+    Reuses build_messages and _run_inference; selects the right system prompt
+    based on the number of entities passed.
+    """
+    assert 2 <= len(entities) <= 3, "Only 2- or 3-entity relations are supported."
+
+    entity_lines = "\n".join(f"- {e}" for e in entities)
+    user_prompt = f"### Caption:\n{caption}\n\n### Entities:\n{entity_lines}\n"
+
+    messages = build_messages(img, user_prompt, system_prompt=SYSTEM_PROMPT_EPIGRAPH)
+    return _run_inference(model, processor, messages, img, max_new_tokens)
+
+
 def parse_json_output(raw: str) -> dict:
     """Extract JSON from model output, stripping any accidental markdown fences."""
     raw = raw.strip()
-    # Strip ```json ... ``` if present
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Return raw output so the record is still saved
         return {"raw_output": raw, "parse_error": True}
 
+
 # ---------------------------------------------------------------------------
-# Main loop
+# Resume helpers
 # ---------------------------------------------------------------------------
 
 def load_already_processed(output_path: Path) -> set[str]:
-    """Return set of image IDs already written to the output JSONL."""
+    """Return set of image IDs already written to the entities JSONL."""
     if not output_path.exists():
         return set()
     done = set()
@@ -125,13 +176,31 @@ def load_already_processed(output_path: Path) -> set[str]:
     return done
 
 
-def run(images_dir: Path, output_path: Path, model_name: str, cache_dir: str, quantize: bool, max_new_tokens: int, max_retries: int):
+def load_already_processed_relations(output_path: Path) -> set[tuple]:
+    """Return set of (image_id, entity_tuple) pairs already written to the relations JSONL."""
+    if not output_path.exists():
+        return set()
+    done = set()
+    with open(output_path) as f:
+        for line in f:
+            try:
+                record = json.loads(line)
+                done.add((record["id"], tuple(record["entities"])))
+            except (json.JSONDecodeError, KeyError):
+                pass
+    return done
+
+
+# ---------------------------------------------------------------------------
+# Step 1 — Entity extraction
+# ---------------------------------------------------------------------------
+
+def extract_entities(images_dir: Path, output_path: Path, model_name: str, cache_dir: str, quantize: bool, max_new_tokens: int, max_retries: int):
     csv_path = images_dir / "images.csv"
     if not csv_path.exists():
         sys.exit(f"CSV not found: {csv_path}")
 
     df = pd.read_csv(csv_path)
-    # Keep only rows whose image file actually exists
     df = df[df["id"].apply(lambda x: (images_dir / f"{x}.jpg").exists())].reset_index(drop=True)
     print(f"Found {len(df)} images with captions.")
 
@@ -178,15 +247,87 @@ def run(images_dir: Path, output_path: Path, model_name: str, cache_dir: str, qu
 
 
 # ---------------------------------------------------------------------------
+# Step 2 — Relation generation
+# ---------------------------------------------------------------------------
+
+def generate_relations(
+    images_dir: Path,
+    entities_path: Path,
+    output_path: Path,
+    model_name: str,
+    cache_dir: str,
+    quantize: bool,
+    max_new_tokens: int,
+):
+    """For each image, generate pairwise entity-relation discussions."""
+    # Load entity records
+    records = []
+    with open(entities_path) as f:
+        for line in f:
+            records.append(json.loads(line))
+
+    already_done = load_already_processed_relations(output_path)
+
+    # Build the full work list upfront so we can report progress
+    work = []
+    for record in records:
+        entities = record["entities"]
+        pairs = list(itertools.combinations(entities, 2))
+        for combo in pairs:
+            key = (record["id"], combo)
+            if key not in already_done:
+                work.append((record, combo))
+
+    print(f"{len(already_done)} relations already processed. {len(work)} remaining.")
+    if not work:
+        print("Nothing to do.")
+        return
+
+    print(f"Loading model {model_name} ...")
+    model, processor = load_base_model(model_name, cache_dir=cache_dir, quantize=quantize)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    errors = 0
+
+    with open(output_path, "a") as out_f:
+        for i, (record, entity_combo) in enumerate(work):
+            img_path = images_dir / f"{record['id']}.jpg"
+            caption = record["caption"]
+
+            try:
+                img = PIL.Image.open(img_path).convert("RGB")
+                relation_text = generate_relation(
+                    model, processor, img, caption,
+                    entities=list(entity_combo),
+                    max_new_tokens=max_new_tokens,
+                )
+            except Exception as e:
+                print(f"  [ERROR] {record['id']} {entity_combo}: {e}")
+                relation_text = f"ERROR: {e}"
+                errors += 1
+
+            out_record = {
+                "id": record["id"],
+                "page": record.get("page"),
+                "caption": caption,
+                "entities": list(entity_combo),
+                "relation": relation_text,
+            }
+            out_f.write(json.dumps(out_record) + "\n")
+            out_f.flush()
+
+            print(f"[{i+1}/{len(work)}] {record['id']} — {entity_combo}")
+
+    print(f"\nDone. Relations written to {output_path}. Errors: {errors}/{len(work)}")
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Extract visual entities from pathology images.")
+    parser = argparse.ArgumentParser(description="EntiGraph pipeline for pathology images: entity extraction + relation generation.")
     parser.add_argument("--images-dir", type=Path, default=Path("output_images"),
                         help="Directory with images and images.csv (default: output_images/)")
-    parser.add_argument("--output", type=Path, default=None,
-                        help="Output JSONL file (default: <images-dir>/entities.jsonl)")
     parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B",
                         help="HuggingFace model name (default: Qwen/Qwen3.5-9B)")
     parser.add_argument("--cache-dir", type=str, default="huggingface",
@@ -202,13 +343,24 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    output_path = args.output or (args.images_dir / "entities.jsonl")
-    run(
+    entities_path = args.images_dir / "entities.jsonl"
+    relations_path = args.images_dir / "relations.jsonl"
+
+    extract_entities(
         images_dir=args.images_dir,
-        output_path=output_path,
+        output_path=entities_path,
         model_name=args.model,
         cache_dir=args.cache_dir,
         quantize=not args.no_quantize,
         max_new_tokens=args.max_new_tokens,
         max_retries=args.max_retries,
+    )
+    generate_relations(
+        images_dir=args.images_dir,
+        entities_path=entities_path,
+        output_path=relations_path,
+        model_name=args.model,
+        cache_dir=args.cache_dir,
+        quantize=not args.no_quantize,
+        max_new_tokens=args.max_new_tokens,
     )
