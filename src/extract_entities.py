@@ -347,13 +347,24 @@ def parse_args():
                         help="First image index to process, inclusive (default: 0)")
     parser.add_argument("--end", type=int, default=None,
                         help="Last image index to process, exclusive (default: all)")
+    parser.add_argument("--entities-out-dir", type=str, default=None)
+    parser.add_argument("--relations-out-dir", type=str, default=None)
+    parser.add_argument("--restart-relations", action="store_true",
+                        help="Delete existing relations JSONL and restart from scratch")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    entities_path = args.images_dir / "entities.jsonl"
-    relations_path = args.images_dir / "relations.jsonl"
+    entities_path = Path(args.entities_out_dir or args.images_dir / "entities.jsonl")
+    relations_path = Path(args.relations_out_dir or args.images_dir / "relations.jsonl")
+
+    print(f"Writing entities to: {entities_path}")
+    print(f"Writing relations to: {relations_path}")
+
+    if args.restart_relations and relations_path.exists():
+        relations_path.unlink()
+        print(f"Deleted {relations_path}, restarting from scratch.")
 
     extract_entities(
         images_dir=args.images_dir,
