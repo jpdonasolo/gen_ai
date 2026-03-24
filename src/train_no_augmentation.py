@@ -81,13 +81,14 @@ def parse_args():
     parser.add_argument("--model", default="Qwen/Qwen3.5-0.8B-Base")
     parser.add_argument("--max-train-samples", type=int, default=None)
     parser.add_argument("--max-eval-samples", type=int, default=None)
+    parser.add_argument("--add-prefix", action="store_true", help="Add instruction prefix to dataset.")
     return parser.parse_args()
 
 def main(args):
     global processor
 
-    ds_qa = load_dataset(cache_dir="huggingface/")
-    model, processor = load_base_model(args.model, peft=True, peft_config={"r": 32})
+    ds_qa = load_dataset(args.add_prefix, cache_dir="huggingface/")
+    model, processor = load_base_model(args.model, peft=True)
     model.print_trainable_parameters()
 
     ds_qa_train = ds_qa["train"].map(

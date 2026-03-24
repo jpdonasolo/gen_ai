@@ -66,7 +66,7 @@ def add_prefix(obs):
     if question.startswith("does") or question.startswith("is"):
         question = "answer strictly with yes or no. " + question
     else:
-        question = "answer with as few words as possible. " + question
+        question = "answer with as few words as possible, preferably with a single sentence. do not explain your reasoning. " + question
     obs["question"] = question
     return obs
 
