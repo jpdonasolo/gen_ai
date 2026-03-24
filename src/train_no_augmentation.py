@@ -152,7 +152,7 @@ def main(args):
         args=config
     )
     trainer.train()
-    trainer.save_model("results/baseline/final")
+    trainer.save_model(f"results/{args.experiment_name}/final")
 
 if __name__ == "__main__":
     print(f"Using device {DEVICE}")
