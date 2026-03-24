@@ -18,7 +18,7 @@ import torch
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
 from tqdm import tqdm
 
-from utils import compute_metrics, predict_batch, load_base_model, load_lora_pretrained_model
+from utils import compute_metrics, predict_batch, load_base_model, load_dataset, load_lora_pretrained_model
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -57,14 +57,15 @@ def evaluate(model, processor, split: datasets.Dataset, batch_size: int, max_new
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", default="Qwen/Qwen3.5-0.8B")
-    parser.add_argument("--cache_dir", default="huggingface")
+    parser.add_argument("--model-name", default="Qwen/Qwen3.5-0.8B")
+    parser.add_argument("--cache-dir", default="huggingface")
     parser.add_argument("--split", default="test", choices=["train", "validation", "test"])
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--max_new_tokens", type=int, default=64)
-    parser.add_argument("--max_samples", type=int, default=None, help="Cap dataset size (for quick runs)")
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--max-new-tokens", type=int, default=64)
+    parser.add_argument("--max-samples", type=int, default=None, help="Cap dataset size (for quick runs)")
     parser.add_argument("--output", default="results/eval_results.json")
     parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--add-prefix", action="store_true", help="Add instruction prefix to dataset.")
     return parser.parse_args()
 
 
@@ -80,8 +81,8 @@ def main():
         model, processor = load_lora_pretrained_model(args.checkpoint, args.model_name, args.cache_dir)
         model.eval()
 
-    print(f"Loading dataset split: {args.split}")
-    ds = datasets.load_dataset("flaviagiammarino/path-vqa", cache_dir=args.cache_dir)
+    print(f"Loading dataset split: {args.split} ({args.add_prefix=})")
+    ds = load_dataset(args.add_prefix, cache_dir=args.cache_dir)
     split = ds[args.split]
 
     if args.max_samples is not None:

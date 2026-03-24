@@ -34,7 +34,7 @@ def predict_batch(
 
     # Apply chat template for each sample, then batch
     texts = [
-        processor.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+        processor.tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
         for msgs in messages_list
     ]
 
@@ -104,9 +104,9 @@ def token_f1(pred: str, ref: str) -> float:
 def bleu_n(pred: str, ref: str, n: int) -> float:
     """Sentence BLEU with only n-grams up to n (uniform weights)."""
     weights = tuple([1.0 / n] * n + [0.0] * (4 - n))
-    smoothie = SmoothingFunction().method1
     return sentence_bleu(
-        [ref.split()], pred.split(), weights=weights, smoothing_function=smoothie
+        [ref.split()], pred.split(), weights=weights,
+        smoothing_function=SmoothingFunction().method1
     )
 
 
