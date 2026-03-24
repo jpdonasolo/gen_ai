@@ -82,6 +82,7 @@ def parse_args():
     parser.add_argument("--max-train-samples", type=int, default=None)
     parser.add_argument("--max-eval-samples", type=int, default=None)
     parser.add_argument("--add-prefix", action="store_true", help="Add instruction prefix to dataset.")
+    parser.add_argument("--experiment-name", type=str, help="Name of the experiment.")
     return parser.parse_args()
 
 def main(args):
@@ -112,7 +113,7 @@ def main(args):
         print(f"Using {len(ds_qa_val)} val samples")
 
     config = SFTConfig(
-        output_dir="results/baseline",
+        output_dir=f"results/{args.experiment_name}",
         num_train_epochs=1,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=3,
@@ -125,15 +126,15 @@ def main(args):
         fp16=False,
         bf16=True,
         logging_steps=1,
-        save_steps=30,
-        eval_steps=1,
+        save_steps=20,
+        eval_steps=20,
         eval_strategy="steps",
         save_total_limit=10,
         load_best_model_at_end=True,
         metric_for_best_model="combined_score",
         greater_is_better=True,
         report_to="wandb",
-        run_name="multigen-baseline",
+        run_name=args.experiment_name,
         max_length=512,
         dataset_text_field="text",
         seed=42,

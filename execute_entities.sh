@@ -28,6 +28,7 @@ rsync -a \
     --exclude='.venv' \
     --exclude='.git' \
     --exclude='data' \
+    --exclude='results' \
     . ~/gen_ai
 
 ############################################
