@@ -79,7 +79,7 @@ def is_yes_no(answer: str) -> bool:
 def extract_yes_no(text: str) -> str:
     """Return the first match found ('yes' or 'no') in the prediction, else the raw text."""
     t = normalise(text)
-    match = re.search(r"\b(yes|no)\b", t)
+    match = re.search(r"\b(yes|no)\b", flags=re.I)
     if match:
         return match.group(1)
     return t
