@@ -9,7 +9,7 @@ import torch
 import datasets
 from trl import SFTTrainer, SFTConfig
 
-from utils import load_base_model
+from utils import load_base_model, load_dataset
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,7 +39,7 @@ def collate_fn(examples):
 
     for example in examples:
         messages = example["prompt"] + example["completion"]  # full conversation
-        text = processor.apply_chat_template(
+        text = processor.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=False,
@@ -61,8 +61,8 @@ def collate_fn(examples):
 def main():
     global processor
 
-    ds_qa = datasets.load_dataset("flaviagiammarino/path-vqa", cache_dir="huggingface/")
-    model, processor = load_base_model("Qwen/Qwen3.5-0.8B", peft=True)
+    ds_qa = load_dataset(cache_dir="huggingface/")
+    model, processor = load_base_model("Qwen/Qwen3.5-0.8B-Base", peft=True, peft_config={"r": 32})
     model.print_trainable_parameters()
 
     ds_qa_train = ds_qa["train"].map(
@@ -80,7 +80,7 @@ def main():
 
     config = SFTConfig(
         output_dir="results/baseline",
-        num_train_epochs=3,
+        num_train_epochs=1,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=3,
         gradient_accumulation_steps=32,
@@ -92,10 +92,10 @@ def main():
         fp16=False,
         bf16=True,
         logging_steps=1,
-        save_steps=60,
+        save_steps=30,
         eval_steps=30,
         eval_strategy="steps",
-        save_total_limit=2,
+        save_total_limit=5,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         report_to="wandb",
