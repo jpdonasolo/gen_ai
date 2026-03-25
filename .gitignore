@@ -13,3 +13,4 @@ data/
 huggingface/
 wandb/
 results/
+main.ipynb

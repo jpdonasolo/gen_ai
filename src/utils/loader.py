@@ -2,14 +2,16 @@ import os
 from pathlib import Path
 
 import torch
-
 import datasets
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
 from peft import LoraConfig, TaskType, prepare_model_for_kbit_training, get_peft_model, PeftModel
 
+from .config import DEVICE
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+###############
+###  Model  ###
+###############
 
 def get_bnb_config():
     return BitsAndBytesConfig(
@@ -19,29 +21,30 @@ def get_bnb_config():
         bnb_4bit_use_double_quant=True,
     )
 
+
 def get_lora_config(config: dict = None):
-    """Build LoRA config from the config dict."""
     if config is None:
         config = {}
     return LoraConfig(
         r=config.get("r", 64),
         lora_alpha=config.get("lora_alpha", 64),
         lora_dropout=config.get("lora_dropout", 0.2),
-        target_modules=config.get("target_modules", "all-linear"), 
+        target_modules=config.get("target_modules", "all-linear"),
         task_type=TaskType.CAUSAL_LM,
         bias=config.get("bias", "none"),
     )
 
+
 def load_base_model(
-    model_name: str, 
+    model_name: str,
     cache_dir: str = "huggingface",
     quantize: bool = True,
     peft: bool = False,
-    peft_config: dict = None
+    peft_config: dict = None,
 ):
     processor = AutoProcessor.from_pretrained(model_name, cache_dir=cache_dir)
     processor.tokenizer.padding_side = "left"
-    
+
     model = Qwen3_5ForConditionalGeneration.from_pretrained(
         model_name,
         cache_dir=cache_dir,
@@ -52,8 +55,9 @@ def load_base_model(
         model = prepare_model_for_kbit_training(model)
         config = get_lora_config(peft_config)
         model = get_peft_model(model, peft_config=config)
-    
+
     return model, processor
+
 
 def load_lora_pretrained_model(checkpoint: str, *args, **kwargs):
     if kwargs.get("peft", False):
@@ -61,6 +65,11 @@ def load_lora_pretrained_model(checkpoint: str, *args, **kwargs):
     model, processor = load_base_model(*args, **kwargs)
     model = PeftModel.from_pretrained(model, checkpoint)
     return model, processor
+
+
+###############
+## Datasets  ##
+###############
 
 def add_prefix(obs):
     question: str = obs["question"]
@@ -71,22 +80,20 @@ def add_prefix(obs):
     obs["question"] = question
     return obs
 
-def load_dataset(
-    add_prefixes: bool = False,
-    *args,
-    **kwargs
-):
+
+def load_base_dataset(add_prefixes: bool = False, *args, **kwargs):
     ds = datasets.load_dataset("flaviagiammarino/path-vqa", *args, **kwargs)
     if add_prefixes:
         ds = ds.map(add_prefix, num_proc=os.cpu_count())
     return ds
 
+
 def load_epigraph(cache_dir: str = "huggingface") -> datasets.Dataset:
     ds = datasets.Dataset.load_from_disk(Path(cache_dir) / "relations_dataset")
     return ds.rename_column("relation", "text")
- 
+
+
 def load_redpajama(tokenizer=None, max_length: int = None, cache_dir: str = "huggingface") -> datasets.Dataset:
-    """Load the RedPajama-1B-Weighted dataset from HuggingFace."""
     processed_path = os.path.join(cache_dir, f"redpajama_truncated_{max_length}")
 
     if tokenizer is not None and max_length is not None:

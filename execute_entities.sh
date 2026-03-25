@@ -29,6 +29,7 @@ rsync -a \
     --exclude='.git' \
     --exclude='data' \
     --exclude='results' \
+    --exclude='wandb' \
     . ~/gen_ai
 
 ############################################
@@ -52,7 +53,7 @@ run_remote() {
     local log=$5
 
     local cmd="
-        rsync -a --exclude='.venv' ~/gen_ai $WORKDIR;
+        rsync -a ~/gen_ai $WORKDIR;
         cd $WORKDIR/gen_ai;
         uv sync;
         uv run python -u src/extract_entities.py \
@@ -83,7 +84,7 @@ wait_for_free_machine() {
                 return
             fi
         done
-        sleep 30
+        sleep 5
     done
 }
 

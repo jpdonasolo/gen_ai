@@ -15,12 +15,10 @@ import os
 
 import datasets
 import torch
-from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
 from tqdm import tqdm
 
 from utils import compute_metrics, predict_batch, load_base_model, load_base_dataset, load_lora_pretrained_model
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from utils.config import DEVICE
 
 
 # ── Evaluation loop ────────────────────────────────────────────────────────────

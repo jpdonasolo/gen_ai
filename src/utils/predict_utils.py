@@ -1,12 +1,9 @@
 import re
 import torch
-from tqdm import tqdm
-
 import numpy as np
-from torch.utils.data import DataLoader
-
 from collections import Counter
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+
 
 # ── Inference ──────────────────────────────────────────────────────────────────
 
@@ -21,6 +18,7 @@ def build_messages(question: str, image) -> list[dict]:
         }
     ]
 
+
 def predict_batch(
     model,
     processor,
@@ -28,19 +26,16 @@ def predict_batch(
     device: torch.device,
     max_new_tokens: int = 64,
 ) -> list[str]:
-    """Run inference on a batch of {image, question} dicts."""
     messages_list = [
         build_messages(q, img)
         for q, img in zip(batch["question"], batch["image"])
     ]
 
-    # Apply chat template for each sample, then batch
     texts = [
         processor.tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
         for msgs in messages_list
     ]
 
-    # Collect all images in order expected by the processor
     images = [batch["image"][i] for i in range(len(batch["image"]))]
 
     inputs = processor(
@@ -55,10 +50,9 @@ def predict_batch(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            pad_token_id=processor.tokenizer.eos_token_id
+            pad_token_id=processor.tokenizer.eos_token_id,
         )
 
-    # Decode only the newly generated tokens
     input_len = inputs["input_ids"].shape[1]
     predictions = processor.batch_decode(
         output_ids[:, input_len:],
@@ -70,7 +64,6 @@ def predict_batch(
 # ── Normalisation ──────────────────────────────────────────────────────────────
 
 def normalise(text: str) -> str:
-    """Lowercase and strip punctuation/whitespace."""
     return re.sub(r"[^\w\s]", "", text.strip().lower())
 
 
@@ -79,17 +72,16 @@ def is_yes_no(answer: str) -> bool:
 
 
 def extract_yes_no(text: str) -> str:
-    """Return the first match found ('yes' or 'no') in the prediction, else the raw text."""
     t = normalise(text)
-    match = re.search(r"\b(yes|no)\b", flags=re.I)
+    match = re.search(r"\b(yes|no)\b", t, flags=re.I)
     if match:
         return match.group(1)
     return t
 
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
+
 def token_f1(pred: str, ref: str) -> float:
-    """Token-level F1 between prediction and reference (bag of words)."""
     pred_tokens = pred.split()
     ref_tokens = ref.split()
     if not pred_tokens or not ref_tokens:
@@ -104,17 +96,14 @@ def token_f1(pred: str, ref: str) -> float:
 
 
 def bleu_n(pred: str, ref: str, n: int) -> float:
-    """Sentence BLEU with only n-grams up to n (uniform weights)."""
     weights = tuple([1.0 / n] * n + [0.0] * (4 - n))
     return sentence_bleu(
         [ref.split()], pred.split(), weights=weights,
-        smoothing_function=SmoothingFunction().method1
+        smoothing_function=SmoothingFunction().method1,
     )
 
 
-def compute_metrics(
-    predictions: list[str], references: list[str]
-) -> dict[str, float]:
+def compute_metrics(predictions: list[str], references: list[str]) -> dict[str, float]:
     yes_no_correct, yes_no_total = 0, 0
     free_em, free_f1 = [], []
     free_bleu1, free_bleu2, free_bleu3 = [], [], []
@@ -137,10 +126,8 @@ def compute_metrics(
     avg = lambda lst: sum(lst) / len(lst) if lst else 0.0
 
     return {
-        # yes/no
         "yes_no_accuracy": yes_no_correct / yes_no_total if yes_no_total else 0.0,
         "yes_no_total": yes_no_total,
-        # open-ended
         "exact_match": avg(free_em),
         "macro_f1": avg(free_f1),
         "bleu1": avg(free_bleu1),
@@ -150,14 +137,19 @@ def compute_metrics(
         "total": yes_no_total + free_total,
     }
 
+
+def preprocess_logits_for_metrics(logits, labels):
+    return logits[0].argmax(dim=-1)
+
+
 def make_compute_metrics(proc):
     def _compute(eval_pred):
         pred_ids, labels = eval_pred
         vocab_size = proc.tokenizer.vocab_size
-        pred_ids = np.clip(pred_ids, 0, vocab_size - 1)  # guard against overflow
+        pred_ids = np.clip(pred_ids, 0, vocab_size - 1)
         labels = np.where(labels == -100, proc.tokenizer.pad_token_id, labels)
         predictions = proc.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-        references  = proc.tokenizer.batch_decode(labels,   skip_special_tokens=True)
+        references = proc.tokenizer.batch_decode(labels, skip_special_tokens=True)
         metrics = compute_metrics(predictions, references)
         metrics["combined_score"] = (metrics["bleu1"] + metrics["yes_no_accuracy"]) / 2
         return metrics

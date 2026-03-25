@@ -10,6 +10,7 @@ from pdfminer.layout import LTTextBox
 
 CAPTION_PATTERN = re.compile(r"^Fig\.?\s{1,5}\d+\.\d+", re.MULTILINE)
 CAPTION_SEARCH_MARGIN = 60  # points below image to look for a caption
+SUBPART_PATTERN = re.compile(r"\(([A-Z])\)")
 
 
 def extract_caption_boxes(pdf_path: str, max_pages: int) -> dict[int, list[tuple]]:
@@ -58,9 +59,6 @@ def find_caption_for_image(
             best_dist = dist
 
     return best_caption
-
-
-SUBPART_PATTERN = re.compile(r"\(([A-Z])\)")
 
 
 def split_caption(caption: str) -> tuple[str, list[str]]:
