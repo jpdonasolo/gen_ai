@@ -5,7 +5,7 @@ from trl import SFTTrainer
 from utils import (
     load_base_model, load_base_dataset,
     make_compute_metrics, preprocess_logits_for_metrics,
-    preprocess_vqa, make_collate_vqa,
+    preprocess_vqa, make_collate,
 )
 from utils.config import DEVICE, CACHE_DIR, base_sft_config, add_common_train_args
 
@@ -23,7 +23,7 @@ def main(args):
     model, processor = load_base_model(args.model, peft=True)
     model.print_trainable_parameters()
 
-    collate_vqa = make_collate_vqa(processor)
+    collate_fn = make_collate(processor, mask_prompt=True)
 
     ds_qa_train = ds_qa["train"].map(
         preprocess_vqa,
@@ -56,7 +56,6 @@ def main(args):
         metric_for_best_model="combined_score",
         greater_is_better=True,
         max_length=512,
-        dataset_text_field="text",
     )
 
     trainer = SFTTrainer(
@@ -64,7 +63,7 @@ def main(args):
         processing_class=processor,
         train_dataset=ds_qa_train,
         eval_dataset=ds_qa_val,
-        data_collator=collate_vqa,
+        data_collator=collate_fn,
         compute_metrics=make_compute_metrics(processor),
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         args=config,

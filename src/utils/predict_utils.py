@@ -5,6 +5,18 @@ from collections import Counter
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
 
+# ── Chat template ──────────────────────────────────────────────────────────────
+
+def apply_chat_template(tokenizer, messages, add_generation_prompt: bool = False) -> str:
+    """Apply chat template with thinking disabled.
+    """
+    kwargs = dict(tokenize=False, add_generation_prompt=add_generation_prompt)
+    try:
+        return tokenizer.apply_chat_template(messages, enable_thinking=False, **kwargs)
+    except TypeError:
+        return tokenizer.apply_chat_template(messages, **kwargs)
+
+
 # ── Inference ──────────────────────────────────────────────────────────────────
 
 def build_messages(question: str, image) -> list[dict]:
@@ -12,7 +24,7 @@ def build_messages(question: str, image) -> list[dict]:
         {
             "role": "user",
             "content": [
-                {"type": "image", "image": image},
+                {"type": "image"},
                 {"type": "text", "text": question},
             ],
         }
@@ -32,7 +44,7 @@ def predict_batch(
     ]
 
     texts = [
-        processor.tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+        apply_chat_template(processor.tokenizer, msgs, add_generation_prompt=True)
         for msgs in messages_list
     ]
 
@@ -98,7 +110,7 @@ def token_f1(pred: str, ref: str) -> float:
 def bleu_n(pred: str, ref: str, n: int) -> float:
     weights = tuple([1.0 / n] * n + [0.0] * (4 - n))
     return sentence_bleu(
-        [ref.split()], pred.split(), weights=weights,
+        [ref.lower().split()], pred.lower().split(), weights=weights,
         smoothing_function=SmoothingFunction().method1,
     )
 

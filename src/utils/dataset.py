@@ -1,9 +1,10 @@
 import os
+
 import numpy as np
 from torch.utils.data import Dataset
-from . import load_epigraph, load_redpajama
 
-_processor = None
+from . import load_epigraph, load_redpajama
+from .predict_utils import apply_chat_template
 
 
 # ── VQA ───────────────────────────────────────────────────────────────────────
@@ -22,32 +23,79 @@ def preprocess_vqa(example):
     }
 
 
-def make_collate_vqa(processor):
-    """Return a collate function closed over *processor*."""
-    def collate_vqa(examples):
-        texts, images = [], []
+# ── Replay preprocessing ───────────────────────────────────────────────────────
+
+def _preprocess_epigraph(example):
+    img = example["image"]
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    messages = [{"role": "user", "content": [
+        {"type": "image"},
+        {"type": "text", "text": example["text"]},
+    ]}]
+    return {"prompt": messages, "images": [img]}
+
+
+def _preprocess_redpajama(example):
+    messages = [{"role": "user", "content": [{"type": "text", "text": example["text"]}]}]
+    return {"prompt": messages, "images": []}
+
+
+# ── Unified collate ────────────────────────────────────────────────────────────
+
+def make_collate(processor, mask_prompt: bool = True):
+    """Unified collate factory for VQA and replay training.
+
+    All examples are expected to have the shape:
+        {"prompt": list[dict], "completion": list[dict] (optional), "images": list}
+
+    The chat template is applied at collate time.
+
+    Args:
+        processor:    HuggingFace processor (tokenizer + image processor).
+        mask_prompt:  If True, suppress prompt tokens in labels so loss is
+                      computed on completions only. Set False for replay/LM style.
+    """
+    def collate(examples):
+        texts, all_images, prompt_lens = [], [], []
+
         for example in examples:
-            messages = example["prompt"] + example["completion"]
-            text = processor.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-                enable_thinking=False,
+            prompt_text = apply_chat_template(
+                processor.tokenizer, example["prompt"], add_generation_prompt=True
             )
-            texts.append(text)
-            images.append(example["images"][0])
+            full_text = apply_chat_template(
+                processor.tokenizer, example["prompt"] + example.get("completion", [])
+            )
+            prompt_len = len(processor.tokenizer.encode(prompt_text, add_special_tokens=False))
+
+            texts.append(full_text)
+            all_images.append(example.get("images", []))
+            prompt_lens.append(prompt_len)
+
+        flat_images = [img for imgs in all_images for img in imgs]
         batch = processor(
             text=texts,
-            images=images,
+            images=flat_images if flat_images else None,
             return_tensors="pt",
             padding=True,
         )
-        batch["labels"] = batch["input_ids"].clone()
+
+        labels = batch["input_ids"].clone()
+        for i, prompt_len in enumerate(prompt_lens):
+            # Always mask padding tokens (processor uses left-padding).
+            labels[i, batch["attention_mask"][i] == 0] = -100
+            # Optionally mask prompt tokens.
+            if mask_prompt and prompt_len > 0:
+                content_start = int((batch["attention_mask"][i] == 1).nonzero(as_tuple=True)[0][0])
+                labels[i, content_start : content_start + prompt_len] = -100
+
+        batch["labels"] = labels
         return batch
-    return collate_vqa
+
+    return collate
 
 
-# ── Replay ────────────────────────────────────────────────────────────────────
+# ── Replay dataset ─────────────────────────────────────────────────────────────
 
 class ReplayDataset(Dataset):
     """Sample-level mixing: each sample is drawn from main_ds,
@@ -69,52 +117,18 @@ class ReplayDataset(Dataset):
         return self.main_ds[idx]
 
 
-def _preprocess_epigraph(example):
-    img = example["image"]
-    if img.mode not in ("RGB", "L"):
-        img = img.convert("RGB")
-    messages = [{
-        "role": "user",
-        "content": [
-            {"type": "image", "image": img},
-            {"type": "text", "text": example["text"]},
-        ],
-    }]
-    text = _processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-    return {"prompt": text, "images": [img]}
-
-
-def _preprocess_redpajama(example):
-    return {"prompt": example["text"], "images": []}
-
-
 def get_replay_dataset(processor, cache_dir: str, rp_max_len: int) -> ReplayDataset:
-    global _processor
-    _processor = processor
-
     epigraph_ds = load_epigraph(cache_dir=cache_dir)
     redpajama_ds = load_redpajama(tokenizer=processor.tokenizer, max_length=rp_max_len, cache_dir=cache_dir)
 
     epigraph_ds = epigraph_ds.map(
-        _preprocess_epigraph, remove_columns=epigraph_ds.column_names, num_proc=os.cpu_count()
+        _preprocess_epigraph,
+        remove_columns=epigraph_ds.column_names,
+        num_proc=os.cpu_count(),
     )
     redpajama_ds = redpajama_ds.map(
-        _preprocess_redpajama, remove_columns=redpajama_ds.column_names, num_proc=os.cpu_count()
+        _preprocess_redpajama,
+        remove_columns=redpajama_ds.column_names,
+        num_proc=os.cpu_count(),
     )
     return ReplayDataset(epigraph_ds, redpajama_ds)
-
-
-def make_collate_replay_dataset(processor):
-    """Return a collate function closed over *processor*."""
-    def collate_replay_dataset(examples):
-        texts = [ex["prompt"] for ex in examples]
-        flat_images = [img for ex in examples for img in ex["images"]]
-        batch = processor(
-            text=texts,
-            images=flat_images if flat_images else None,
-            return_tensors="pt",
-            padding=True,
-        )
-        batch["labels"] = batch["input_ids"].clone()
-        return batch
-    return collate_replay_dataset

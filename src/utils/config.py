@@ -27,7 +27,7 @@ def base_sft_config(experiment_name: str, **overrides) -> SFTConfig:
         logging_steps=1,
         save_steps=20,
         save_total_limit=10,
-        report_to="wandb",
+        # report_to="wandb",
         seed=42,
     )
     defaults.update(overrides)

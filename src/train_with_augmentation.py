@@ -2,7 +2,7 @@ import argparse
 from torch.utils.data import Subset
 from trl import SFTTrainer
 
-from utils import load_base_model, get_replay_dataset, make_collate_replay_dataset
+from utils import load_base_model, get_replay_dataset, make_collate
 from utils.config import DEVICE, CACHE_DIR, base_sft_config, add_common_train_args
 
 MAX_LEN = 256
@@ -18,7 +18,7 @@ def main(args):
     model, processor = load_base_model(args.model, cache_dir=CACHE_DIR, peft=True, peft_config={"r": 32})
     model.print_trainable_parameters()
 
-    collate_fn = make_collate_replay_dataset(processor)
+    collate_fn = make_collate(processor, mask_prompt=False)
     train_ds = get_replay_dataset(processor, CACHE_DIR, MAX_LEN)
 
     if args.max_train_samples is not None:
