@@ -158,10 +158,17 @@ def make_compute_metrics(proc):
     def _compute(eval_pred):
         pred_ids, labels = eval_pred
         vocab_size = proc.tokenizer.vocab_size
-        pred_ids = np.clip(pred_ids, 0, vocab_size - 1)
-        labels = np.where(labels == -100, proc.tokenizer.pad_token_id, labels)
-        predictions = proc.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-        references = proc.tokenizer.batch_decode(labels, skip_special_tokens=True)
+
+        predictions, references = [], []
+        for pred_row, label_row in zip(pred_ids, labels):
+            mask = label_row != -100
+            mask_indices = np.where(mask)[0]
+            pred_indices = np.clip(mask_indices - 1, 0, len(pred_row) - 1)  # pred[j-1] predicts label[j]
+            pred_tokens = np.clip(pred_row[pred_indices], 0, vocab_size - 1)
+            label_tokens = label_row[mask_indices]
+            predictions.append(proc.tokenizer.decode(pred_tokens, skip_special_tokens=True))
+            references.append(proc.tokenizer.decode(label_tokens, skip_special_tokens=True))
+
         metrics = compute_metrics(predictions, references)
         metrics["combined_score"] = (metrics["bleu1"] + metrics["yes_no_accuracy"]) / 2
         return metrics
