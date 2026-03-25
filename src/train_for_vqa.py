@@ -1,35 +1,54 @@
 import os
-import argparse
+from argparse import ArgumentParser, BooleanOptionalAction
+from pathlib import Path
+
 from trl import SFTTrainer
 
 from utils import (
-    load_base_model, load_base_dataset,
-    preprocess_vqa, make_collate,
-    load_lora_pretrained_model
+    load_base_model,
+    load_base_dataset,
+    preprocess_vqa,
+    make_collate,
+    load_lora_pretrained_model,
 )
-from utils.config import DEVICE, CACHE_DIR, base_sft_config, add_common_train_args
+from utils.config import DEVICE, base_sft_config
+from utils.train_yaml import load_train_yaml
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    add_common_train_args(parser)
-    # parser.add_argument("--max-eval-samples", type=int, default=None)
-    parser.add_argument("--add-prefix", action="store_true", help="Add instruction prefix to dataset.")
-    parser.add_argument("--checkpoint", default=None)
-    parser.add_argument("--cache-dir", default="huggingface")
+    parser = ArgumentParser(description="Fine-tune on Path-VQA.")
+    parser.add_argument(
+        "--config",
+        "-c",
+        type=str,
+        required=True,
+        help=f"YAML config path",
+    )
+    parser.add_argument("--report-to", type=str, default=None, help="Override training.report_to.")
     return parser.parse_args()
 
 
 def main(args):
-    ds_qa = load_base_dataset(args.add_prefix, cache_dir=CACHE_DIR)
+    cfg = load_train_yaml(args.config)
+    if hasattr(args, "report_to"):
+       cfg["training"]["report_to"] = args.report_to
 
-    if args.checkpoint is None:
-        print(f"Loading model: {args.model}")
-        model, processor = load_base_model(args.model, peft=True)
+    cache_dir = cfg.get("cache_dir") or "huggingface"
+    vqa = cfg.get("vqa") or {}
+    training = dict(cfg.get("training") or {})
+
+    ds_qa = load_base_dataset(vqa.get("add_prefix", False), cache_dir=cache_dir)
+
+    checkpoint = vqa.get("checkpoint")
+    if checkpoint is None:
+        print(f"Loading model: {cfg['model']}")
+        model, processor = load_base_model(cfg["model"], peft=True)
     else:
-        print(f"Loading pretrained model: {args.checkpoint} from {args.model}")
-        model, processor = load_lora_pretrained_model(args.checkpoint, True, args.model, args.cache_dir)
-    
+        print(f"Loading pretrained model: {checkpoint} from {cfg['model']}")
+        model, processor = load_lora_pretrained_model(
+            checkpoint, cfg["model"], cache_dir=cache_dir, is_trainable=True
+        )
+
     model.print_trainable_parameters()
 
     collate_fn = make_collate(processor, mask_prompt=True)
@@ -41,18 +60,12 @@ def main(args):
         writer_batch_size=500,
     )
 
-    if args.max_train_samples is not None:
-        ds_qa_train = ds_qa_train.select(range(min(args.max_train_samples, len(ds_qa_train))))
+    max_train = cfg.get("max_train_samples")
+    if max_train is not None:
+        ds_qa_train = ds_qa_train.select(range(min(max_train, len(ds_qa_train))))
         print(f"Using {len(ds_qa_train)} train samples")
 
-    config = base_sft_config(
-        args.experiment_name,
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=3,
-        fp16=False,
-        max_length=512,
-        report_to="none"
-    )
+    config = base_sft_config(cfg["experiment_name"], **training)
 
     trainer = SFTTrainer(
         model=model,
@@ -62,10 +75,9 @@ def main(args):
         args=config,
     )
     trainer.train()
-    trainer.save_model(f"results/{args.experiment_name}/final")
+    trainer.save_model(f"results/{cfg['experiment_name']}/final")
 
 
 if __name__ == "__main__":
     print(f"Using device {DEVICE}")
-    args = parse_args()
-    main(args)
+    main(parse_args())

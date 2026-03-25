@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 
 from . import load_epigraph, load_redpajama
 from .predict_utils import apply_chat_template
+from .loader import load_base_dataset
 
 
 # ── VQA ───────────────────────────────────────────────────────────────────────
@@ -117,7 +118,12 @@ class ReplayDataset(Dataset):
         return self.main_ds[idx]
 
 
-def get_replay_dataset(processor, cache_dir: str, rp_max_len: int, epigraph_k: int = 20) -> ReplayDataset:
+def get_replay_dataset(
+    processor, 
+    cache_dir: str, 
+    rp_max_len: int, 
+    epigraph_k: int = 20,
+) -> ReplayDataset:
     epigraph_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k)
     redpajama_ds = load_redpajama(tokenizer=processor.tokenizer, max_length=rp_max_len, cache_dir=cache_dir)
 

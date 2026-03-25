@@ -1,46 +1,62 @@
-import argparse
+from argparse import ArgumentParser
+from pathlib import Path
+
 from torch.utils.data import Subset
 from trl import SFTTrainer
 
 from utils import load_base_model, get_replay_dataset, make_collate
-from utils.config import DEVICE, CACHE_DIR, base_sft_config, add_common_train_args
-
-MAX_LEN = 256
+from utils.config import DEVICE, base_sft_config
+from utils.train_yaml import load_train_yaml
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    add_common_train_args(parser)
-    parser.add_argument("--epigraph-k", type=int, default=20)
-    parser.add_argument("--lora-r", type=int, default=64)
-    parser.add_argument("--lora-alpha", type=int, default=64)
-    parser.add_argument("--report-to", type=str, default="wandb")
+    parser = ArgumentParser(description="Replay-style training.")
+    parser.add_argument(
+        "--config",
+        "-c",
+        type=str,
+        required=True,
+        help=f"YAML config path",
+    )
+    parser.add_argument("--report-to", type=str, default=None, help="Override training.report_to.")
     return parser.parse_args()
 
 
 def main(args):
-    peft_config={
-        "r": args.lora_r,
-        "lora_alpha": args.lora_alpha,
+    cfg = load_train_yaml(args.config)
+    if hasattr(args, "report_to"):
+       cfg["training"]["report_to"] = args.report_to
+
+    cache_dir = cfg.get("cache_dir") or "huggingface"
+    replay = cfg.get("replay") or {}
+    lora = cfg.get("lora") or {}
+    collate = cfg.get("collate") or {}
+    training = dict(cfg.get("training") or {})
+
+    rp_max_len = replay.get("rp_max_len", 256)
+    training.setdefault("max_length", rp_max_len)
+
+    peft_config = {
+        "r": lora.get("r", 64),
+        "lora_alpha": lora.get("lora_alpha", 64),
     }
-    model, processor = load_base_model(args.model, cache_dir=CACHE_DIR, peft=True, peft_config=peft_config)
+    model, processor = load_base_model(
+        cfg["model"], cache_dir=cache_dir, peft=True, peft_config=peft_config
+    )
     model.print_trainable_parameters()
 
-    collate_fn = make_collate(processor, mask_prompt=False)
-    train_ds = get_replay_dataset(processor, CACHE_DIR, MAX_LEN, epigraph_k=args.epigraph_k)
+    collate_fn = make_collate(processor, mask_prompt=collate.get("mask_prompt", False))
+    train_ds = get_replay_dataset(
+        processor, cache_dir, rp_max_len, epigraph_k=replay.get("epigraph_k", 20)
+    )
 
-    if args.max_train_samples is not None:
-        n = min(args.max_train_samples, len(train_ds))
+    max_train = cfg.get("max_train_samples")
+    if max_train is not None:
+        n = min(max_train, len(train_ds))
         train_ds = Subset(train_ds, range(n))
         print(f"Using {n} batches")
 
-    config = base_sft_config(
-        args.experiment_name,
-        per_device_train_batch_size=2,
-        max_length=MAX_LEN,
-        gradient_checkpointing=True,
-        report_to=args.report_to
-    )
+    config = base_sft_config(cfg["experiment_name"], **training)
 
     trainer = SFTTrainer(
         model=model,
@@ -50,10 +66,9 @@ def main(args):
         args=config,
     )
     trainer.train()
-    trainer.save_model(f"results/{args.experiment_name}/final")
+    trainer.save_model(f"results/{cfg['experiment_name']}/final")
 
 
 if __name__ == "__main__":
     print(f"Using device {DEVICE}")
-    args = parse_args()
-    main(args)
+    main(parse_args())
