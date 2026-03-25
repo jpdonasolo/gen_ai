@@ -18,7 +18,7 @@ import torch
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
 from tqdm import tqdm
 
-from utils import compute_metrics, predict_batch, load_base_model, load_dataset, load_lora_pretrained_model
+from utils import compute_metrics, predict_batch, load_base_model, load_base_dataset, load_lora_pretrained_model
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -82,7 +82,7 @@ def main():
         model.eval()
 
     print(f"Loading dataset split: {args.split} ({args.add_prefix=})")
-    ds = load_dataset(args.add_prefix, cache_dir=args.cache_dir)
+    ds = load_base_dataset(args.add_prefix, cache_dir=args.cache_dir)
     split = ds[args.split]
 
     if args.max_samples is not None:

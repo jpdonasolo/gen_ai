@@ -1,7 +1,9 @@
 import re
 import torch
-from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+import numpy as np
+from torch.utils.data import DataLoader
 
 from collections import Counter
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
@@ -147,3 +149,16 @@ def compute_metrics(
         "freeform_total": free_total,
         "total": yes_no_total + free_total,
     }
+
+def make_compute_metrics(proc):
+    def _compute(eval_pred):
+        pred_ids, labels = eval_pred
+        vocab_size = proc.tokenizer.vocab_size
+        pred_ids = np.clip(pred_ids, 0, vocab_size - 1)  # guard against overflow
+        labels = np.where(labels == -100, proc.tokenizer.pad_token_id, labels)
+        predictions = proc.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+        references  = proc.tokenizer.batch_decode(labels,   skip_special_tokens=True)
+        metrics = compute_metrics(predictions, references)
+        metrics["combined_score"] = (metrics["bleu1"] + metrics["yes_no_accuracy"]) / 2
+        return metrics
+    return _compute

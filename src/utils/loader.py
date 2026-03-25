@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import torch
 
@@ -66,7 +67,7 @@ def add_prefix(obs):
     if question.startswith("does") or question.startswith("is"):
         question = "answer strictly with yes or no. " + question
     else:
-        question = "answer with as few words as possible, preferably with a single sentence. do not explain your reasoning. " + question
+        question = "answer with as few words as possible. " + question
     obs["question"] = question
     return obs
 
@@ -78,4 +79,33 @@ def load_dataset(
     ds = datasets.load_dataset("flaviagiammarino/path-vqa", *args, **kwargs)
     if add_prefixes:
         ds = ds.map(add_prefix, num_proc=os.cpu_count())
+    return ds
+
+def load_epigraph(cache_dir: str = "huggingface") -> datasets.Dataset:
+    ds = datasets.Dataset.load_from_disk(Path(cache_dir) / "relations_dataset")
+    return ds.rename_column("relation", "text")
+ 
+def load_redpajama(tokenizer=None, max_length: int = None, cache_dir: str = "huggingface") -> datasets.Dataset:
+    """Load the RedPajama-1B-Weighted dataset from HuggingFace."""
+    processed_path = os.path.join(cache_dir, f"redpajama_truncated_{max_length}")
+
+    if tokenizer is not None and max_length is not None:
+        if os.path.exists(processed_path):
+            return datasets.load_from_disk(processed_path)
+
+    ds = datasets.load_dataset(
+        "krisbailey/RedPajama-1B-Weighted",
+        split="train",
+        cache_dir=cache_dir,
+    )
+
+    if tokenizer is not None and max_length is not None:
+        def truncate_text(example):
+            tokens = tokenizer(example["text"], truncation=True, max_length=max_length, add_special_tokens=False)
+            example["text"] = tokenizer.decode(tokens["input_ids"])
+            return example
+
+        ds = ds.map(truncate_text, num_proc=os.cpu_count())
+        ds.save_to_disk(processed_path)
+
     return ds

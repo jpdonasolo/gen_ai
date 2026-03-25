@@ -11,10 +11,11 @@ from trl import SFTTrainer, SFTConfig
 
 import argparse
 import numpy as np
-from utils import load_base_model, load_dataset, compute_metrics
+from utils import load_base_model, load_base_dataset, make_compute_metrics
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+CACHE_DIR = "huggingface"
 processor = None # Use as global variable in collation function
 
 
@@ -63,19 +64,6 @@ def collate_fn(examples):
 def preprocess_logits_for_metrics(logits, labels):
     return logits[0].argmax(dim=-1)
 
-def make_compute_metrics(proc):
-    def _compute(eval_pred):
-        pred_ids, labels = eval_pred
-        vocab_size = proc.tokenizer.vocab_size
-        pred_ids = np.clip(pred_ids, 0, vocab_size - 1)  # guard against overflow
-        labels = np.where(labels == -100, proc.tokenizer.pad_token_id, labels)
-        predictions = proc.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-        references  = proc.tokenizer.batch_decode(labels,   skip_special_tokens=True)
-        metrics = compute_metrics(predictions, references)
-        metrics["combined_score"] = (metrics["bleu1"] + metrics["yes_no_accuracy"]) / 2
-        return metrics
-    return _compute
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="Qwen/Qwen3.5-0.8B-Base")
@@ -88,7 +76,7 @@ def parse_args():
 def main(args):
     global processor
 
-    ds_qa = load_dataset(args.add_prefix, cache_dir="huggingface/")
+    ds_qa = load_base_dataset(args.add_prefix, cache_dir=CACHE_DIR)
     model, processor = load_base_model(args.model, peft=True)
     model.print_trainable_parameters()
 
