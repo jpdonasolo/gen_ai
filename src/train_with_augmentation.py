@@ -47,7 +47,11 @@ def main(args):
 
     collate_fn = make_collate(processor, mask_prompt=collate.get("mask_prompt", False))
     train_ds = get_replay_dataset(
-        processor, cache_dir, rp_max_len, epigraph_k=replay.get("epigraph_k", 20)
+        processor, 
+        cache_dir, 
+        rp_max_len, 
+        epigraph_k=replay.get("epigraph_k", 20),
+        merge_with_vqa=replay.get("merge_with_vqa", False)
     )
 
     max_train = cfg.get("max_train_samples")

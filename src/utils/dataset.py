@@ -3,6 +3,8 @@ import os
 import numpy as np
 from torch.utils.data import Dataset
 
+from datasets import concatenate_datasets
+
 from . import load_epigraph, load_redpajama
 from .predict_utils import apply_chat_template
 from .loader import load_base_dataset
@@ -34,12 +36,12 @@ def _preprocess_epigraph(example):
         {"type": "image"},
         {"type": "text", "text": example["text"]},
     ]}]
-    return {"prompt": messages, "images": [img]}
+    return {"prompt": messages, "images": [img], "completion": []}
 
 
 def _preprocess_redpajama(example):
     messages = [{"role": "user", "content": [{"type": "text", "text": example["text"]}]}]
-    return {"prompt": messages, "images": []}
+    return {"prompt": messages, "images": [], "completion": []}
 
 
 # ── Unified collate ────────────────────────────────────────────────────────────
@@ -123,18 +125,29 @@ def get_replay_dataset(
     cache_dir: str, 
     rp_max_len: int, 
     epigraph_k: int = 20,
+    merge_with_vqa: bool = False
 ) -> ReplayDataset:
-    epigraph_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k)
-    redpajama_ds = load_redpajama(tokenizer=processor.tokenizer, max_length=rp_max_len, cache_dir=cache_dir)
+    main_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k)
+    aux_ds = load_redpajama(tokenizer=processor.tokenizer, max_length=rp_max_len, cache_dir=cache_dir)
 
-    epigraph_ds = epigraph_ds.map(
+    main_ds = main_ds.map(
         _preprocess_epigraph,
-        remove_columns=epigraph_ds.column_names,
+        remove_columns=main_ds.column_names,
         num_proc=os.cpu_count(),
     )
-    redpajama_ds = redpajama_ds.map(
+    aux_ds = aux_ds.map(
         _preprocess_redpajama,
-        remove_columns=redpajama_ds.column_names,
+        remove_columns=aux_ds.column_names,
         num_proc=os.cpu_count(),
     )
-    return ReplayDataset(epigraph_ds, redpajama_ds)
+    if merge_with_vqa:
+        vqa_ds = load_base_dataset(cache_dir=cache_dir)
+        vqa_ds = vqa_ds["train"].map(
+            preprocess_vqa,
+            remove_columns=vqa_ds["train"].column_names,
+            num_proc=os.cpu_count(),
+            writer_batch_size=500,
+        )
+        main_ds = concatenate_datasets([main_ds, vqa_ds])
+
+    return ReplayDataset(main_ds, aux_ds)
