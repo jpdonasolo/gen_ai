@@ -117,8 +117,8 @@ class ReplayDataset(Dataset):
         return self.main_ds[idx]
 
 
-def get_replay_dataset(processor, cache_dir: str, rp_max_len: int) -> ReplayDataset:
-    epigraph_ds = load_epigraph(cache_dir=cache_dir)
+def get_replay_dataset(processor, cache_dir: str, rp_max_len: int, epigraph_k: int = 20) -> ReplayDataset:
+    epigraph_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k)
     redpajama_ds = load_redpajama(tokenizer=processor.tokenizer, max_length=rp_max_len, cache_dir=cache_dir)
 
     epigraph_ds = epigraph_ds.map(

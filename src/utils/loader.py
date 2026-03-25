@@ -1,6 +1,9 @@
+import PIL
+import json
 import os
 from pathlib import Path
 
+import pandas as pd
 import torch
 import datasets
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
@@ -59,11 +62,11 @@ def load_base_model(
     return model, processor
 
 
-def load_lora_pretrained_model(checkpoint: str, *args, **kwargs):
+def load_lora_pretrained_model(checkpoint: str, *args, is_trainable: bool = False, **kwargs):
     if kwargs.get("peft", False):
         raise ValueError
     model, processor = load_base_model(*args, **kwargs)
-    model = PeftModel.from_pretrained(model, checkpoint)
+    model = PeftModel.from_pretrained(model, checkpoint, is_trainable=is_trainable)
     return model, processor
 
 
@@ -88,8 +91,39 @@ def load_base_dataset(add_prefixes: bool = False, *args, **kwargs):
     return ds
 
 
-def load_epigraph(cache_dir: str = "huggingface") -> datasets.Dataset:
-    ds = datasets.Dataset.load_from_disk(Path(cache_dir) / "relations_dataset")
+def load_epigraph(cache_dir: str = "huggingface", k: int = 20) -> datasets.Dataset:
+    if k >= 200:
+        processed_path = os.path.join(cache_dir, f"relations_dataset")
+    else:
+        processed_path = os.path.join(cache_dir, f"relations_{k}")
+    
+    if os.path.exists(processed_path):
+        return datasets.load_from_disk(processed_path).rename_column("relation", "text")
+        
+    relations = []
+    for j in Path("output_images/").glob("relations_*.jsonl"):
+        with open(j, "r") as f:
+            lines = f.readlines()
+        for l in lines:
+            relations.append(json.loads(l))
+
+    df = pd.DataFrame(relations)
+    df_sampled = df.groupby("id").apply(
+        lambda grp: grp.sample(
+            n=min(k, len(grp)),
+            random_state=0,
+            replace=False,
+        )
+    )
+    df_sampled.index = df_sampled.index.get_level_values("id")
+    df_sampled = df_sampled.reset_index(drop=False)
+
+    df_sampled["image"] = df_sampled["id"].apply(lambda x: f"output_images/{x}.jpg")
+
+    ds = datasets.Dataset.from_pandas(df_sampled)
+    ds = ds.cast_column("image", datasets.Image())
+    ds.save_to_disk(processed_path)
+    
     return ds.rename_column("relation", "text")
 
 

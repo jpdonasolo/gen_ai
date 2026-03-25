@@ -55,7 +55,7 @@ def evaluate(model, processor, split: datasets.Dataset, batch_size: int, max_new
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-name", default="Qwen/Qwen3.5-0.8B")
+    parser.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
     parser.add_argument("--cache-dir", default="huggingface")
     parser.add_argument("--split", default="test", choices=["train", "validation", "test"])
     parser.add_argument("--batch-size", type=int, default=4)
@@ -71,12 +71,12 @@ def main():
     args = parse_args()
 
     if args.checkpoint is None:
-        print(f"Loading model: {args.model_name}")
-        model, processor = load_base_model(args.model_name, args.cache_dir)
+        print(f"Loading model: {args.model}")
+        model, processor = load_base_model(args.model, args.cache_dir)
         model.eval()
     else:
-        print(f"Loading pretrained model: {args.checkpoint} from {args.model_name}")
-        model, processor = load_lora_pretrained_model(args.checkpoint, args.model_name, args.cache_dir)
+        print(f"Loading pretrained model: {args.checkpoint} from {args.model}")
+        model, processor = load_lora_pretrained_model(args.checkpoint, args.model, args.cache_dir)
         model.eval()
 
     print(f"Loading dataset split: {args.split} ({args.add_prefix=})")

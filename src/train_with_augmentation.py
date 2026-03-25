@@ -11,15 +11,23 @@ MAX_LEN = 256
 def parse_args():
     parser = argparse.ArgumentParser()
     add_common_train_args(parser)
+    parser.add_argument("--epigraph-k", type=int, default=20)
+    parser.add_argument("--lora-r", type=int, default=64)
+    parser.add_argument("--lora-alpha", type=int, default=64)
+    parser.add_argument("--report-to", type=str, default="wandb")
     return parser.parse_args()
 
 
 def main(args):
-    model, processor = load_base_model(args.model, cache_dir=CACHE_DIR, peft=True, peft_config={"r": 32})
+    peft_config={
+        "r": args.lora_r,
+        "lora_alpha": args.lora_alpha,
+    }
+    model, processor = load_base_model(args.model, cache_dir=CACHE_DIR, peft=True, peft_config=peft_config)
     model.print_trainable_parameters()
 
     collate_fn = make_collate(processor, mask_prompt=False)
-    train_ds = get_replay_dataset(processor, CACHE_DIR, MAX_LEN)
+    train_ds = get_replay_dataset(processor, CACHE_DIR, MAX_LEN, epigraph_k=args.epigraph_k)
 
     if args.max_train_samples is not None:
         n = min(args.max_train_samples, len(train_ds))
@@ -31,6 +39,7 @@ def main(args):
         per_device_train_batch_size=2,
         max_length=MAX_LEN,
         gradient_checkpointing=True,
+        report_to=args.report_to
     )
 
     trainer = SFTTrainer(
