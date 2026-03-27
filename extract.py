@@ -8,7 +8,7 @@ import fitz  # PyMuPDF
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTTextBox
 
-CAPTION_PATTERN = re.compile(r"^Fig\.?\s{1,5}\d+\.\d+", re.MULTILINE)
+CAPTION_PATTERN = re.compile(r"^Fig(?:ure)?\.?\s{1,5}\d+\.\d+", re.MULTILINE)
 CAPTION_SEARCH_MARGIN = 60  # points below image to look for a caption
 SUBPART_PATTERN = re.compile(r"\(([A-Z])\)")
 
@@ -43,17 +43,18 @@ def find_caption_for_image(
     page_height: float,
     caption_boxes: list[tuple],
 ) -> str:
-    """
-    Match an image (fitz coords) to the nearest caption box below it.
-    Converts PDFMiner caption boxes to fitz coords for comparison.
-    Returns the caption text or empty string if none found within margin.
-    """
     best_caption = ""
     best_dist = float("inf")
 
     for x0, y0, x1, y1, text in caption_boxes:
         fitz_y0, _ = pdfminer_to_fitz_y(y0, y1, page_height)
         dist = fitz_y0 - img_rect.y1
+
+        # Check horizontal overlap
+        overlap = min(img_rect.x1, x1) - max(img_rect.x0, x0)
+        if overlap <= 0:
+            continue
+
         if 0 <= dist <= CAPTION_SEARCH_MARGIN and dist < best_dist:
             best_caption = " ".join(text.split())
             best_dist = dist
@@ -232,9 +233,10 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
-    if args.output_dir.exists():
+    output_dir = Path(args.output_dir) / Path(args.pdf).stem
+    if output_dir.exists():
         print("Deleting existing output_dir")
-        shutil.rmtree(args.output_dir)
+        shutil.rmtree(output_dir)
 
     print("Extracting caption boxes with PDFMiner...")
     caption_boxes = extract_caption_boxes(args.pdf, max_pages=args.pages)
@@ -243,8 +245,8 @@ def main():
     doc = fitz.open(args.pdf)
     page_images = extract_images_from_pages(doc, caption_boxes, start=0, end=args.pages)
     assign_ids(page_images)
-    save_images(doc, page_images, args.output_dir)
-    save_csv(page_images, args.output_dir)
+    save_images(doc, page_images, output_dir)
+    save_csv(page_images, output_dir)
     doc.close()
 
 

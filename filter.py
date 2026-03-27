@@ -7,7 +7,8 @@ from PIL import Image
 
 
 COURTESY_PATTERN = re.compile(r"\(Courtesy.*?\)", re.IGNORECASE)
-FIG_PATTERN = re.compile(r"^Fig\.\s*\d+[\.\d]*\.?\s*", re.IGNORECASE)
+FIG_PATTERN = re.compile(r"^Fig(?:ure)?\.?\s*\d+[\.\d]*\.?\s*", re.IGNORECASE)
+KEY_PATTERNS = re.compile(r"(?:^(?:Mechanism|Diagrammatic|Pathophysiology|Arachidonic|Sequence|Cellular)|[Ss]chematic)")
 
 def hash_image(path):
     with open(path, "rb") as f:
@@ -26,7 +27,7 @@ def has_multiple_subfigures(caption):
         return False
     return "(A)" in caption and "(B)" in caption
 
-def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75):
+def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75, key_patterns=False):
     remove_hashes = {
         hash_image(os.path.join(remove_dir, f))
         for f in os.listdir(remove_dir)
@@ -77,6 +78,17 @@ def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75):
     df["caption"] = df["caption"].str.replace(COURTESY_PATTERN, "", regex=True).str.strip()
     df["caption"] = df["caption"].str.replace(FIG_PATTERN, "", regex=True).str.strip()
 
+    # Filter key patterns
+    n_key_patterns = 0
+    if args.key_patterns:
+        key_pattern_mask = df["caption"].str.contains(KEY_PATTERNS, na=False)
+        n_key_patterns = key_pattern_mask.sum()
+        key_pattern_stems = df[key_pattern_mask]["id"].tolist()
+        for stem in key_pattern_stems:
+            fpath = os.path.join(dataset_dir, stem + ".jpg")
+            os.remove(fpath)
+        df = df[~key_pattern_mask]
+
     df.to_csv(csv_path, index=False)
 
     print(f"Removed {n_duplicates} duplicate(s)")
@@ -86,6 +98,9 @@ def filter_dataset(dataset_dir, remove_dir, min_w=90, min_h=75):
     print(f"Cleaned courtesy attributions from {n_courtesy} caption(s)")
     print(f"Cleaned figure prefixes from {n_fig_prefix} caption(s)")
     print(f"Total rows removed: {n_duplicates + n_too_small + n_no_caption + n_multi_subfig}")
+    if args.key_patterns:
+        print(f"Removed {n_key_patterns} image(s) matching key patterns")
+    print(f"Total rows removed: {n_duplicates + n_too_small + n_no_caption + n_multi_subfig + n_key_patterns}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Remove duplicate, small, or malformed images from a dataset.")
@@ -93,5 +108,6 @@ if __name__ == "__main__":
     parser.add_argument("--remove-dir", required=True)
     parser.add_argument("--min-width", type=int, default=90)
     parser.add_argument("--min-height", type=int, default=75)
+    parser.add_argument("--key-patterns", action="store_true")
     args = parser.parse_args()
-    filter_dataset(args.dataset_dir, args.remove_dir, args.min_width, args.min_height)
+    filter_dataset(args.dataset_dir, args.remove_dir, args.min_width, args.min_height, args.key_patterns)
