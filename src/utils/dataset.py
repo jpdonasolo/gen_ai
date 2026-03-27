@@ -9,6 +9,8 @@ from . import load_epigraph, load_redpajama
 from .predict_utils import apply_chat_template
 from .loader import load_base_dataset
 
+from .prompts import SYSTEM_PROMPT_EPIGRAPH
+
 
 # ── VQA ───────────────────────────────────────────────────────────────────────
 
@@ -16,15 +18,27 @@ def preprocess_vqa(example):
     img = example["image"]
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
-    return {
-        "prompt": [{"role": "user", "content": [
+    messages = [
+        {"role": "user", "content": [
             {"type": "text", "text": example["question"]},
             {"type": "image"},
-        ]}],
-        "completion": [{"role": "assistant", "content": example["answer"]}],
-        "images": [example["image"]],
-    }
+        ]}]
+    completion = [
+        {"role": "assistant", "content": [
+            {"type": "text", "text": example["answer"]}
+        ]}]
+    return {"prompt": messages, "images": [img], "completion": completion}
 
+def preprocess_vqa_instruct(example):
+    system_prompt = "you are a helpful assistant. answer yes-no questions only with yes or no. answer open questions with the least words possible."
+    system_message = [
+        {"role": "system", "content": [
+            {"type": "text", "text": system_prompt}
+        ]}
+    ]
+    ret = preprocess_vqa(example)
+    ret["prompt"] = system_message + ret["prompt"]
+    return ret
 
 # ── Replay preprocessing ───────────────────────────────────────────────────────
 
@@ -37,6 +51,29 @@ def _preprocess_epigraph(example):
         {"type": "text", "text": example["text"]},
     ]}]
     return {"prompt": messages, "images": [img], "completion": []}
+
+def _preprocess_epigraph_instruct(example):
+    entity_lines = "\n".join(f"- {e}" for e in example["entities"])
+    user_prompt = f"### Caption:\n{example['caption']}\n\n### Entities:\n{entity_lines}\n"
+
+    img = example["image"]
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    messages = [
+        {"role": "system", "content": [
+            {"type": "text", "text": SYSTEM_PROMPT_EPIGRAPH}
+        ]},
+        {"role": "user", "content": [
+            {"type": "image"},
+            {"type": "text", "text": user_prompt},
+        ]},
+    ]
+    completion = [
+        {"role": "assistant", "content": [
+            {"type": "text", "text": example["text"]}
+        ]}
+    ]
+    return {"prompt": messages, "images": [img], "completion": completion}
 
 
 def _preprocess_redpajama(example):
@@ -125,29 +162,52 @@ def get_replay_dataset(
     cache_dir: str, 
     rp_max_len: int, 
     epigraph_k: int = 20,
-    merge_with_vqa: bool = False
+    merge_with_vqa: bool = False,
+    use_aux_ds: bool = True,
+    instruct: bool = False
 ) -> ReplayDataset:
     main_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k)
-    aux_ds = load_redpajama(tokenizer=processor.tokenizer, max_length=rp_max_len, cache_dir=cache_dir)
-
-    main_ds = main_ds.map(
-        _preprocess_epigraph,
-        remove_columns=main_ds.column_names,
-        num_proc=os.cpu_count(),
-    )
-    aux_ds = aux_ds.map(
-        _preprocess_redpajama,
-        remove_columns=aux_ds.column_names,
-        num_proc=os.cpu_count(),
-    )
-    if merge_with_vqa:
-        vqa_ds = load_base_dataset(cache_dir=cache_dir)
-        vqa_ds = vqa_ds["train"].map(
-            preprocess_vqa,
-            remove_columns=vqa_ds["train"].column_names,
+    if instruct:
+        main_ds = main_ds.map(
+            _preprocess_epigraph_instruct,
+            remove_columns=main_ds.column_names,
             num_proc=os.cpu_count(),
-            writer_batch_size=500,
         )
+
+    else:
+        main_ds = main_ds.map(
+            _preprocess_epigraph,
+            remove_columns=main_ds.column_names,
+            num_proc=os.cpu_count(),
+        )
+
+    if merge_with_vqa:
+        if instruct:
+            vqa_ds = load_base_dataset(add_prefixes=True, cache_dir=cache_dir)
+            vqa_ds = vqa_ds["train"].map(
+                preprocess_vqa_instruct,
+                remove_columns=vqa_ds["train"].column_names,
+                num_proc=os.cpu_count(),
+                writer_batch_size=500,
+            )
+        else:
+            vqa_ds = load_base_dataset(cache_dir=cache_dir)
+            vqa_ds = vqa_ds["train"].map(
+                preprocess_vqa,
+                remove_columns=vqa_ds["train"].column_names,
+                num_proc=os.cpu_count(),
+                writer_batch_size=500,
+            )
         main_ds = concatenate_datasets([main_ds, vqa_ds])
+
+    if use_aux_ds:
+        aux_ds = load_redpajama(tokenizer=processor.tokenizer, max_length=rp_max_len, cache_dir=cache_dir)
+        aux_ds = aux_ds.map(
+            _preprocess_redpajama,
+            remove_columns=aux_ds.column_names,
+            num_proc=os.cpu_count(),
+        )
+    else:
+        aux_ds = main_ds
 
     return ReplayDataset(main_ds, aux_ds)

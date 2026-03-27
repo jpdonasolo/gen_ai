@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from utils import compute_metrics, predict_batch, load_base_model, load_base_dataset, load_lora_pretrained_model
 from utils.config import DEVICE
+from utils.dataset import preprocess_vqa, preprocess_vqa_instruct
 
 
 # ── Evaluation loop ────────────────────────────────────────────────────────────
@@ -26,15 +27,15 @@ from utils.config import DEVICE
 def collate_fn(batch: list[dict]) -> dict:
     """Stack list-of-dicts into dict-of-lists (HF datasets default collator drops PIL)."""
     return {
-        "image": [b["image"] for b in batch],
-        "question": [b["question"] for b in batch],
-        "answer": [b["answer"] for b in batch],
+        "image": [b["images"][0] for b in batch],
+        "question": [b["prompt"] for b in batch],
+        "answer": [b["completion"] for b in batch],
     }
 
 
-def evaluate(model, processor, split: datasets.Dataset, batch_size: int, max_new_tokens: int):
+def evaluate(model, processor, ds: datasets.Dataset, batch_size: int, max_new_tokens: int):
     loader = torch.utils.data.DataLoader(
-        split,
+        ds,
         batch_size=batch_size,
         collate_fn=collate_fn,
         shuffle=False,
@@ -45,8 +46,9 @@ def evaluate(model, processor, split: datasets.Dataset, batch_size: int, max_new
     for batch in tqdm(loader, desc="Evaluating"):
         preds = predict_batch(model, processor, batch, DEVICE, max_new_tokens=max_new_tokens)
         all_preds.extend(preds)
-        all_refs.extend([a.strip().lower() for a in batch["answer"]])
-        all_quests.extend([a.strip().lower() for a in batch["question"]])
+        all_refs.extend([a[0]["content"][0]["text"].strip().lower() for a in batch["answer"]])
+        all_quests.extend([a[-1]["content"][0]["text"].strip().lower() for a in batch["question"]])
+
 
     return all_preds, all_refs, all_quests
 
@@ -64,6 +66,7 @@ def parse_args():
     parser.add_argument("--output", default="results/eval_results.json")
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--add-prefix", action="store_true", help="Add instruction prefix to dataset.")
+    parser.add_argument("--instruct", action="store_true", help="Whether or not to load the instruct dataset.")
     return parser.parse_args()
 
 
@@ -80,14 +83,28 @@ def main():
         model.eval()
 
     print(f"Loading dataset split: {args.split} ({args.add_prefix=})")
-    ds = load_base_dataset(args.add_prefix, cache_dir=args.cache_dir)
-    split = ds[args.split]
+    if args.instruct:
+        ds = load_base_dataset(True, cache_dir=args.cache_dir)
+        ds = ds[args.split].map(
+            preprocess_vqa_instruct,
+            remove_columns=ds[args.split].column_names,
+            num_proc=os.cpu_count(),
+            writer_batch_size=500,
+        )
+    else:
+        ds = load_base_dataset(args.add_prefix, cache_dir=args.cache_dir)
+        ds = ds[args.split].map(
+            preprocess_vqa,
+            remove_columns=ds[args.split].column_names,
+            num_proc=os.cpu_count(),
+            writer_batch_size=500,
+        )
 
     if args.max_samples is not None:
-        split = split.select(range(min(args.max_samples, len(split))))
-        print(f"Using {len(split)} samples")
+        ds = ds.select(range(min(args.max_samples, len(ds))))
+        print(f"Using {len(ds)} samples")
 
-    preds, refs, quests = evaluate(model, processor, split, args.batch_size, args.max_new_tokens)
+    preds, refs, quests = evaluate(model, processor, ds, args.batch_size, args.max_new_tokens)
     metrics = compute_metrics(preds, refs)
 
     print("\n── Results ──────────────────────────")

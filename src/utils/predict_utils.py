@@ -38,14 +38,10 @@ def predict_batch(
     device: torch.device,
     max_new_tokens: int = 64,
 ) -> list[str]:
-    messages_list = [
-        build_messages(q, img)
-        for q, img in zip(batch["question"], batch["image"])
-    ]
 
     texts = [
         apply_chat_template(processor.tokenizer, msgs, add_generation_prompt=True)
-        for msgs in messages_list
+        for msgs in batch["question"]
     ]
 
     images = [batch["image"][i] for i in range(len(batch["image"]))]

@@ -18,14 +18,11 @@ def parse_args():
         required=True,
         help=f"YAML config path",
     )
-    # parser.add_argument("--report-to", type=str, default="none", help="Override training.report_to.")
     return parser.parse_args()
 
 
 def main(args):
     cfg = load_train_yaml(args.config)
-    # if hasattr(args, "report_to"):
-    #    cfg["training"]["report_to"] = args.report_to
 
     tr = cfg["training"]
     lora_cfg = cfg["lora"]
@@ -59,13 +56,15 @@ def main(args):
     )
     model.print_trainable_parameters()
 
-    collate_fn = make_collate(processor, mask_prompt=False)
+    collate_fn = make_collate(processor, mask_prompt=True)
     train_ds = get_replay_dataset(
         processor, 
         cache_dir, 
         rp_max_len, 
         epigraph_k=replay.get("epigraph_k", 20),
-        merge_with_vqa=replay.get("merge_with_vqa", False)
+        merge_with_vqa=replay.get("merge_with_vqa", True),
+        use_aux_ds=False,
+        instruct=True,
     )
 
     max_train = cfg.get("max_train_samples")

@@ -7,7 +7,7 @@
 # list below). Same machine list as execute_entities.sh.
 #
 # Usage:
-#   ./execute_experiments.sh                    # all configs/novqa_*.yaml and configs/withvqa_*.yaml (sorted)
+#   ./execute_experiments.sh                    # all ${CONFIG_DIR}/novqa_*.yaml and ${CONFIG_DIR}/withvqa_*.yaml (sorted)
 #   ./execute_experiments.sh configs/foo.yaml   # explicit config(s)
 #
 # Eval JSON: ${EVAL_HOME:-$HOME}/gen_ai/eval_results/eval_<experiment_name>.json on the worker
@@ -15,6 +15,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+CONFIG_DIR="${CONFIG_DIR:-'configs/instruct'}"
 EVAL_BASE="${EVAL_HOME:-$HOME}"
 LOCAL_EVAL_RESULTS_DIR="${LOCAL_EVAL_RESULTS_DIR:-${SCRIPT_DIR}/eval_results}"
 
@@ -22,10 +23,11 @@ LOCAL_EVAL_RESULTS_DIR="${LOCAL_EVAL_RESULTS_DIR:-${SCRIPT_DIR}/eval_results}"
 # Machine list (keep in sync with execute_entities.sh)
 ############################################
 MACHINES=(
-    ain ardennes carmor charente cher creuse
-    dordogne doubs essonne finistere gironde indre
-    jura landes loire manche marne mayenne morbihan
-    moselle saone somme vendee vosges
+    autruche bengali coucou dindon 
+    faisan gelinotte hibou harpie 
+    kamiche linotte loriol mouette 
+    nandou ombrette perdrix rouloul
+    sitelle traquet verdier 
 )
 
 ############################################
@@ -34,11 +36,11 @@ MACHINES=(
 if [[ $# -gt 0 ]]; then
     CONFIGS=("$@")
 else
-    mapfile -t CONFIGS < <(ls -1 configs/novqa_*.yaml configs/withvqa_*.yaml 2>/dev/null | sort || true)
+    mapfile -t CONFIGS < <(ls -1 "${CONFIG_DIR}"/instruct*.yaml 2>/dev/null | sort || true)
 fi
 
 if [[ ${#CONFIGS[@]} -eq 0 ]]; then
-    echo "No configs to run. Pass yaml paths as arguments or ensure configs/novqa_*.yaml and configs/withvqa_*.yaml exist."
+    echo "No configs to run. Pass yaml paths as arguments or ensure ${CONFIG_DIR}/instruct*.yaml exist."
     exit 1
 fi
 

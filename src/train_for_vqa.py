@@ -24,14 +24,14 @@ def parse_args():
         required=True,
         help=f"YAML config path",
     )
-    parser.add_argument("--report-to", type=str, default=None, help="Override training.report_to.")
+    # parser.add_argument("--report-to", type=str, default=None, help="Override training.report_to.")
     return parser.parse_args()
 
 
 def main(args):
     cfg = load_train_yaml(args.config)
-    if hasattr(args, "report_to"):
-       cfg["training"]["report_to"] = args.report_to
+    # if hasattr(args, "report_to"):
+    #    cfg["training"]["report_to"] = args.report_to
 
     cache_dir = cfg.get("cache_dir") or "huggingface"
     vqa = cfg.get("vqa") or {}

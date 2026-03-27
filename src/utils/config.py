@@ -26,7 +26,7 @@ def base_sft_config(experiment_name: str, **overrides) -> SFTConfig:
         bf16=True,
         logging_steps=1,
         save_steps=20,
-        save_total_limit=10,
+        save_total_limit=50,
         report_to="wandb",
         seed=42,
     )
