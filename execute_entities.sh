@@ -4,16 +4,16 @@ set -e
 ############################################
 # CONFIGURATION
 ############################################
-TOTAL_DOCS=502
+TOTAL_DOCS=621
 DOCS_PER_MACHINE=20
 
 BASE_DIR="$HOME/gen_ai"
 WORKDIR="/Data/joao.giordani-donasolo"
-IMAGES_DIR="output_images/"
+IMAGES_DIR="output_images/textbook_of_pathology"
 LOG_DIR="$BASE_DIR/logs"
 
 MACHINES=(
-    ain ardennes carmor charente cher creuse
+    ain ardennes carmor charente creuse
     dordogne doubs essonne finistere gironde indre
     jura landes loire manche marne mayenne morbihan
     moselle saone somme vendee vosges
@@ -62,7 +62,7 @@ run_remote() {
             --end $end \
             --relations-out-dir $IMAGES_DIR/relations_${start}_${end}.jsonl \
             --restart-relations;
-        cp output_images/relations_${start}_${end}.jsonl $BASE_DIR/output_images/relations_${start}_${end}.jsonl
+        cp $IMAGES_DIR/relations_${start}_${end}.jsonl $BASE_DIR/$IMAGES_DIR/relations_${start}_${end}.jsonl
     "
     echo "[LAUNCH] $machine → $cmd"
 
