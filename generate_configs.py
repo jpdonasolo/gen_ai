@@ -14,7 +14,7 @@ cache_dir: "huggingface"
 max_train_samples: null
 
 replay:
-  epigraph_k: 200
+  epigraph_k: 190
   rp_max_len: {max_length}
   merge_with_vqa: {merge_vqa}
   load_epigraph_full: true
@@ -37,6 +37,8 @@ training:
   gradient_accumulation_steps: {batch_size}
   gradient_checkpointing: true
   report_to: "wandb"
+
+  # torch_empty_cache_steps: 1
 """
 
 def main():

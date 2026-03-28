@@ -5,7 +5,7 @@ cache_dir: "huggingface"
 max_train_samples: null
 
 replay:
-  epigraph_k: 200
+  epigraph_k: 190
   rp_max_len: 256
   merge_with_vqa: True
   load_epigraph_full: true
@@ -20,7 +20,6 @@ training:
   lr_scheduler_type: "cosine"
   warmup_steps: 50
   weight_decay: 5.0e-6
-  max_length: 256
   
   save_steps: 40
   save_total_limit: 100
@@ -29,3 +28,5 @@ training:
   gradient_accumulation_steps: 128
   gradient_checkpointing: true
   report_to: "wandb"
+
+  # torch_empty_cache_steps: 1
