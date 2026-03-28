@@ -1,5 +1,5 @@
 
-experiment_name: "instruct_withvqa_lora32_lr1.0e-5_bs128_full"
+experiment_name: "instruct_novqa_lora16_lr5.0e-6_bs256_full"
 model: "Qwen/Qwen3.5-0.8B"
 cache_dir: "huggingface"
 max_train_samples: null
@@ -7,16 +7,16 @@ max_train_samples: null
 replay:
   epigraph_k: 200
   rp_max_len: 256
-  merge_with_vqa: True
+  merge_with_vqa: False
   load_epigraph_full: true
 
 lora:
-  r: 32
-  lora_alpha: 32
+  r: 16
+  lora_alpha: 16
 
 training:
   num_train_epochs: 3
-  learning_rate: 1.0e-5
+  learning_rate: 5.0e-6
   lr_scheduler_type: "cosine"
   warmup_steps: 50
   weight_decay: 5.0e-6
@@ -26,6 +26,6 @@ training:
   save_total_limit: 100
 
   per_device_train_batch_size: 1
-  gradient_accumulation_steps: 128
+  gradient_accumulation_steps: 256
   gradient_checkpointing: true
   report_to: "wandb"

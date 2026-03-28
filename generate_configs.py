@@ -3,7 +3,7 @@ import os
 CONFIGS_DIR = "configs/instruct"
 
 LRS = ["5.0e-6", "1.0e-5"]
-BATCH_SIZES = [64, 128]
+BATCH_SIZES = [128, 256]
 LORA_RS = [16, 32]
 MERGE_VQAS = [True, False]
 
@@ -15,7 +15,7 @@ max_train_samples: null
 
 replay:
   epigraph_k: 200
-  rp_max_len: 512
+  rp_max_len: {max_length}
   merge_with_vqa: {merge_vqa}
   load_epigraph_full: true
 
@@ -33,7 +33,7 @@ training:
   save_steps: 40
   save_total_limit: 100
 
-  per_device_train_batch_size: 2
+  per_device_train_batch_size: 1
   gradient_accumulation_steps: {batch_size}
   gradient_checkpointing: true
   report_to: "wandb"
@@ -52,7 +52,8 @@ def main():
                         merge_vqa_flag=merge_vqa_str,
                         lora=lora,
                         lr=lr,
-                        batch_size=batch_size
+                        batch_size=batch_size,
+                        max_length=256
                     )
                     path = os.path.join(CONFIGS_DIR, f"{exp_name}.yaml")
                     with open(path, "w") as f:
