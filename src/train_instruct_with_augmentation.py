@@ -56,7 +56,7 @@ def main(args):
     )
     model.print_trainable_parameters()
 
-    collate_fn = make_collate(processor, mask_prompt=True)
+    collate_fn = make_collate(processor, mask_prompt=True, max_length=rp_max_len)
     train_ds = get_replay_dataset(
         processor, 
         cache_dir, 
@@ -65,6 +65,8 @@ def main(args):
         merge_with_vqa=replay.get("merge_with_vqa", True),
         use_aux_ds=False,
         instruct=True,
+        load_epigraph_full=replay.get("load_epigraph_full", False),
+        max_len=rp_max_len
     )
 
     max_train = cfg.get("max_train_samples")

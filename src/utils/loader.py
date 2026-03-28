@@ -91,17 +91,53 @@ def load_base_dataset(add_prefixes: bool = False, *args, **kwargs):
     return ds
 
 
-def load_epigraph(cache_dir: str = "huggingface", k: int = 20) -> datasets.Dataset:
+def load_epigraph(
+    cache_dir: str = "huggingface",
+    k: int = 20,
+    load_full: bool = False,
+    processor=None,
+    max_len: int | None = None,
+) -> datasets.Dataset:
     if k >= 200:
         processed_path = os.path.join(cache_dir, f"relations_dataset")
     else:
         processed_path = os.path.join(cache_dir, f"relations_{k}")
-    
+    if load_full:
+        processed_path = processed_path + "_full"
+    else:
+        processed_path = processed_path + "_sample"
+    if max_len is not None:
+        processed_path = processed_path + f"_maxlen{max_len}"
+
     if os.path.exists(processed_path):
-        return datasets.load_from_disk(processed_path).rename_column("relation", "text")
-        
+        return datasets.load_from_disk(processed_path)
+
+    if load_full:
+        paths = ["output_images/basic_pathology", "output_images/textbook_of_pathology"]
+    else:
+        paths = ["output_images/basic_pathology"]
+
+    dss = []
+    for path in paths:
+        dss.append(load_epigraph_source(path, k))
+    ds = datasets.concatenate_datasets(dss)
+
+    if processor is not None and max_len is not None:
+        tokenizer = processor.tokenizer
+        def truncate_text(example):
+            ids = tokenizer.encode(example["text"], add_special_tokens=False)
+            if len(ids) > max_len:
+                ids = ids[:max_len]
+                example["text"] = tokenizer.decode(ids, skip_special_tokens=False)
+            return example
+        ds = ds.map(truncate_text)
+
+    ds.save_to_disk(processed_path)
+    return ds
+
+def load_epigraph_source(source_path, k):
     relations = []
-    for j in Path("output_images/").glob("relations_*.jsonl"):
+    for j in Path(source_path).glob("relations_*.jsonl"):
         with open(j, "r") as f:
             lines = f.readlines()
         for l in lines:
@@ -118,13 +154,13 @@ def load_epigraph(cache_dir: str = "huggingface", k: int = 20) -> datasets.Datas
     df_sampled.index = df_sampled.index.get_level_values("id")
     df_sampled = df_sampled.reset_index(drop=False)
 
-    df_sampled["image"] = df_sampled["id"].apply(lambda x: f"output_images/{x}.jpg")
+    df_sampled["image"] = df_sampled["id"].apply(lambda x: f"{source_path}/{x}.jpg")
 
     ds = datasets.Dataset.from_pandas(df_sampled)
     ds = ds.cast_column("image", datasets.Image())
-    ds.save_to_disk(processed_path)
-    
-    return ds.rename_column("relation", "text")
+    ds = ds.rename_column("relation", "text")
+
+    return ds
 
 
 def load_redpajama(tokenizer=None, max_length: int = None, cache_dir: str = "huggingface") -> datasets.Dataset:

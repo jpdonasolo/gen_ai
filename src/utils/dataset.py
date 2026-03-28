@@ -82,20 +82,8 @@ def _preprocess_redpajama(example):
 
 
 # ── Unified collate ────────────────────────────────────────────────────────────
+def make_collate(processor, mask_prompt: bool = True, max_length: int | None = None):
 
-def make_collate(processor, mask_prompt: bool = True):
-    """Unified collate factory for VQA and replay training.
-
-    All examples are expected to have the shape:
-        {"prompt": list[dict], "completion": list[dict] (optional), "images": list}
-
-    The chat template is applied at collate time.
-
-    Args:
-        processor:    HuggingFace processor (tokenizer + image processor).
-        mask_prompt:  If True, suppress prompt tokens in labels so loss is
-                      computed on completions only. Set False for replay/LM style.
-    """
     def collate(examples):
         texts, all_images, prompt_lens = [], [], []
 
@@ -122,9 +110,7 @@ def make_collate(processor, mask_prompt: bool = True):
 
         labels = batch["input_ids"].clone()
         for i, prompt_len in enumerate(prompt_lens):
-            # Always mask padding tokens (processor uses left-padding).
             labels[i, batch["attention_mask"][i] == 0] = -100
-            # Optionally mask prompt tokens.
             if mask_prompt and prompt_len > 0:
                 content_start = int((batch["attention_mask"][i] == 1).nonzero(as_tuple=True)[0][0])
                 labels[i, content_start : content_start + prompt_len] = -100
@@ -164,21 +150,28 @@ def get_replay_dataset(
     epigraph_k: int = 20,
     merge_with_vqa: bool = False,
     use_aux_ds: bool = True,
-    instruct: bool = False
+    instruct: bool = False,
+    load_epigraph_full: bool = False,
+    max_len: int | None = None,
 ) -> ReplayDataset:
-    main_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k)
+    num_proc = os.cpu_count()
+    # To prevent memory crashes
+    if load_epigraph_full:
+        num_proc = num_proc // 2
+    
+    main_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k, load_full=load_epigraph_full, processor=processor, max_len=max_len)
     if instruct:
         main_ds = main_ds.map(
             _preprocess_epigraph_instruct,
             remove_columns=main_ds.column_names,
-            num_proc=os.cpu_count(),
+            num_proc=num_proc,
         )
 
     else:
         main_ds = main_ds.map(
             _preprocess_epigraph,
             remove_columns=main_ds.column_names,
-            num_proc=os.cpu_count(),
+            num_proc=num_proc,
         )
 
     if merge_with_vqa:
@@ -187,7 +180,7 @@ def get_replay_dataset(
             vqa_ds = vqa_ds["train"].map(
                 preprocess_vqa_instruct,
                 remove_columns=vqa_ds["train"].column_names,
-                num_proc=os.cpu_count(),
+                num_proc=num_proc,
                 writer_batch_size=500,
             )
         else:
@@ -195,7 +188,7 @@ def get_replay_dataset(
             vqa_ds = vqa_ds["train"].map(
                 preprocess_vqa,
                 remove_columns=vqa_ds["train"].column_names,
-                num_proc=os.cpu_count(),
+                num_proc=num_proc,
                 writer_batch_size=500,
             )
         main_ds = concatenate_datasets([main_ds, vqa_ds])
@@ -205,9 +198,11 @@ def get_replay_dataset(
         aux_ds = aux_ds.map(
             _preprocess_redpajama,
             remove_columns=aux_ds.column_names,
-            num_proc=os.cpu_count(),
+            num_proc=num_proc,
         )
     else:
         aux_ds = main_ds
+    
+    print(f"Loaded dataset with {len(main_ds)} samples")
 
     return ReplayDataset(main_ds, aux_ds)
