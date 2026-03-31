@@ -9,7 +9,7 @@ DOCS_PER_MACHINE=20
 
 BASE_DIR="$HOME/gen_ai"
 WORKDIR="/Data/joao.giordani-donasolo"
-IMAGES_DIR="output_images/textbook_of_pathology"
+IMAGES_DIR="output/textbook_of_pathology"
 LOG_DIR="$BASE_DIR/logs"
 
 MACHINES=(

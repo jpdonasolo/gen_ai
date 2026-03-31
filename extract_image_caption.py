@@ -226,7 +226,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract images from a PDF and save metadata.")
     parser.add_argument("pdf", help="Path to the PDF file")
     parser.add_argument("--pages", type=int, default=50, help="Number of pages to scan (default: 50)")
-    parser.add_argument("--output-dir", type=Path, default=Path("output_images"), help="Directory to save images and CSV (default: output_images/)")
+    parser.add_argument("--output-dir", type=Path, default=Path("output"), help="Directory to save images and CSV (default: output/)")
     return parser.parse_args()
 
 

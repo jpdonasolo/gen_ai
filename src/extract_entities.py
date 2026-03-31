@@ -15,10 +15,10 @@ Results are saved incrementally to JSONL files so both steps are resumable.
 
 Usage:
     # Step 1 — extract entities
-    python extract_entities.py --images-dir output_images/ --mode entities
+    python extract_entities.py --images-dir output/ --mode entities
 
     # Step 2 — generate relations (reads entities JSONL produced by step 1)
-    python extract_entities.py --images-dir output_images/ --mode relations [--triples]
+    python extract_entities.py --images-dir output/ --mode relations [--triples]
 """
 
 import argparse
@@ -297,8 +297,8 @@ def generate_relations(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="EntiGraph pipeline for pathology images: entity extraction + relation generation.")
-    parser.add_argument("--images-dir", type=Path, default=Path("output_images"),
-                        help="Directory with images and images.csv (default: output_images/)")
+    parser.add_argument("--images-dir", type=Path, default=Path("output"),
+                        help="Directory with images and images.csv (default: output/)")
     parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B",
                         help="HuggingFace model name (default: Qwen/Qwen3.5-9B)")
     parser.add_argument("--cache-dir", type=str, default="/Data/joao.giordani-donasolo/huggingface",

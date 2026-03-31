@@ -113,9 +113,9 @@ def load_epigraph(
         return datasets.load_from_disk(processed_path)
 
     if load_full:
-        paths = ["output_images/basic_pathology", "output_images/textbook_of_pathology"]
+        paths = ["output/basic_pathology", "output/textbook_of_pathology"]
     else:
-        paths = ["output_images/basic_pathology"]
+        paths = ["output/basic_pathology"]
 
     dss = []
     for path in paths:
