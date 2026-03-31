@@ -301,7 +301,7 @@ def parse_args():
                         help="Directory with images and images.csv (default: output/)")
     parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B",
                         help="HuggingFace model name (default: Qwen/Qwen3.5-9B)")
-    parser.add_argument("--cache-dir", type=str, default="/Data/joao.giordani-donasolo/huggingface",
+    parser.add_argument("--cache-dir", type=str, default="huggingface",
                         help="HuggingFace cache dir")
     parser.add_argument("--no-quantize", action="store_true",
                         help="Disable 4-bit NF4 quantization")
