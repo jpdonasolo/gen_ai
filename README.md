@@ -62,7 +62,20 @@ The results from the original run were saved under `output`.
 
 Now, we proceed to the training of the model. The best configuration found is saved at `configs/instruct/instruct_withvqa_lora32_lr1.0e-5_bs128_full.yaml`, and uses the full synthetic dataset (both source textbooks) and PathVQA training samples. To train the model, execute the command below. It will download the base Qwen model and the PathVQA dataset, generate the EntiGraph dataset from the output folder, and run the training with the specified configurations.
 ```bash
-uv run src/train_instruct_with_augmentation.py -c configs/instruct/instruct_withvqa_lora32_lr1.0e-5_bs128_full.yaml
+uv run src/train_instruct_with_augment  ation.py -c configs/instruct/instruct_withvqa_lora32_lr1.0e-5_bs128_full.yaml
 ```
 
 The code uses weights and biases to report the metrics in a friendly interface. To disable it, add `report_to: none` in the yaml file, under the training section.
+
+## Evaluation
+**RUN TIME:** between 15min and 20min per run
+
+To evaluate the pretrained instruct model, run
+```bash
+uv run src/evaluate.py --model "Qwen/Qwen3.5-0.8B" --batch-size 64 --output eval_results.json
+```
+
+To evaluate the our final model, run
+```bash
+uv run src/evaluate.py --model "Qwen/Qwen3.5-0.8B" --checkpoint joao-donasolo/entigraph-pathvqa --batch-size 64 --output eval_results.json
+```
