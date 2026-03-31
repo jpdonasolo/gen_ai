@@ -14,10 +14,10 @@ cache_dir: "huggingface"
 max_train_samples: null
 
 replay:
-  epigraph_k: 190
+  entigraph_k: 190
   rp_max_len: {max_length}
   merge_with_vqa: {merge_vqa}
-  load_epigraph_full: true
+  load_entigraph_full: true
 
 lora:
   r: {lora}

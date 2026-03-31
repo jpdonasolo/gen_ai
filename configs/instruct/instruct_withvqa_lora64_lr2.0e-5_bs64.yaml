@@ -5,7 +5,7 @@ cache_dir: "huggingface"
 max_train_samples: null
 
 replay:
-  epigraph_k: 200
+  entigraph_k: 200
   rp_max_len: 256
   merge_with_vqa: True
 

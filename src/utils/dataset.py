@@ -5,11 +5,11 @@ from torch.utils.data import Dataset
 
 from datasets import concatenate_datasets
 
-from . import load_epigraph, load_redpajama
+from . import load_entigraph, load_redpajama
 from .predict_utils import apply_chat_template
 from .loader import load_base_dataset
 
-from .prompts import SYSTEM_PROMPT_EPIGRAPH
+from .prompts import SYSTEM_PROMPT_ENTIGRAPH
 
 
 # ── VQA ───────────────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ def preprocess_vqa_instruct(example):
 
 # ── Replay preprocessing ───────────────────────────────────────────────────────
 
-def _preprocess_epigraph(example):
+def _preprocess_entigraph(example):
     img = example["image"]
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
@@ -52,7 +52,7 @@ def _preprocess_epigraph(example):
     ]}]
     return {"prompt": messages, "images": [img], "completion": []}
 
-def _preprocess_epigraph_instruct(example):
+def _preprocess_entigraph_instruct(example):
     entity_lines = "\n".join(f"- {e}" for e in example["entities"])
     user_prompt = f"### Caption:\n{example['caption']}\n\n### Entities:\n{entity_lines}\n"
 
@@ -61,7 +61,7 @@ def _preprocess_epigraph_instruct(example):
         img = img.convert("RGB")
     messages = [
         {"role": "system", "content": [
-            {"type": "text", "text": SYSTEM_PROMPT_EPIGRAPH}
+            {"type": "text", "text": SYSTEM_PROMPT_ENTIGRAPH}
         ]},
         {"role": "user", "content": [
             {"type": "image"},
@@ -147,29 +147,29 @@ def get_replay_dataset(
     processor, 
     cache_dir: str, 
     rp_max_len: int, 
-    epigraph_k: int = 20,
+    entigraph_k: int = 20,
     merge_with_vqa: bool = False,
     use_aux_ds: bool = True,
     instruct: bool = False,
-    load_epigraph_full: bool = False,
+    load_entigraph_full: bool = False,
     max_len: int | None = None,
 ) -> ReplayDataset:
     num_proc = os.cpu_count()
     # To prevent memory crashes
-    if load_epigraph_full:
+    if load_entigraph_full:
         num_proc = num_proc // 2
     
-    main_ds = load_epigraph(cache_dir=cache_dir, k=epigraph_k, load_full=load_epigraph_full, processor=processor, max_len=max_len)
+    main_ds = load_entigraph(cache_dir=cache_dir, k=entigraph_k, load_full=load_entigraph_full, processor=processor, max_len=max_len)
     if instruct:
         main_ds = main_ds.map(
-            _preprocess_epigraph_instruct,
+            _preprocess_entigraph_instruct,
             remove_columns=main_ds.column_names,
             num_proc=num_proc,
         )
 
     else:
         main_ds = main_ds.map(
-            _preprocess_epigraph,
+            _preprocess_entigraph,
             remove_columns=main_ds.column_names,
             num_proc=num_proc,
         )

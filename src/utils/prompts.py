@@ -15,7 +15,7 @@ Here is the format you should use for your response:
 }
 """
 
-SYSTEM_PROMPT_EPIGRAPH = """
+SYSTEM_PROMPT_ENTIGRAPH = """
 You will act as a knowledge analyzer tasked with dissecting an image-caption pair provided by the user. Your role involves two main objectives:
 
 1. Rephrasing Content: The user will identify two specific entities mentioned in the pair. You are required to rephrase the content of the caption twice:

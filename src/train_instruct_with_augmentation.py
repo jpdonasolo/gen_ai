@@ -61,11 +61,11 @@ def main(args):
         processor, 
         cache_dir, 
         rp_max_len, 
-        epigraph_k=replay.get("epigraph_k", 20),
+        entigraph_k=replay.get("entigraph_k", 20),
         merge_with_vqa=replay.get("merge_with_vqa", True),
         use_aux_ds=False,
         instruct=True,
-        load_epigraph_full=replay.get("load_epigraph_full", False),
+        load_entigraph_full=replay.get("load_entigraph_full", False),
         max_len=rp_max_len
     )
 

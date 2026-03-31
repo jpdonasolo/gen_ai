@@ -64,7 +64,7 @@ def main(args):
         processor, 
         cache_dir, 
         rp_max_len, 
-        epigraph_k=replay.get("epigraph_k", 20),
+        entigraph_k=replay.get("entigraph_k", 20),
         merge_with_vqa=replay.get("merge_with_vqa", False)
     )
 

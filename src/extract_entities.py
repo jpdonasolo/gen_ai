@@ -37,7 +37,7 @@ from utils.loader import load_base_model
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-from utils.prompts import SYSTEM_PROMPT_ENTITY_EXTRACTION, SYSTEM_PROMPT_EPIGRAPH
+from utils.prompts import SYSTEM_PROMPT_ENTITY_EXTRACTION, SYSTEM_PROMPT_ENTIGRAPH
 
 # ---------------------------------------------------------------------------
 # Inference helpers
@@ -108,7 +108,7 @@ def generate_relation(model, processor, img: PIL.Image.Image, caption: str, enti
     entity_lines = "\n".join(f"- {e}" for e in entities)
     user_prompt = f"### Caption:\n{caption}\n\n### Entities:\n{entity_lines}\n"
 
-    messages = build_messages(img, user_prompt, system_prompt=SYSTEM_PROMPT_EPIGRAPH)
+    messages = build_messages(img, user_prompt, system_prompt=SYSTEM_PROMPT_ENTIGRAPH)
     return _run_inference(model, processor, messages, img, max_new_tokens)
 
 

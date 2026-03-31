@@ -91,7 +91,7 @@ def load_base_dataset(add_prefixes: bool = False, *args, **kwargs):
     return ds
 
 
-def load_epigraph(
+def load_entigraph(
     cache_dir: str = "huggingface",
     k: int = 20,
     load_full: bool = False,
@@ -120,7 +120,7 @@ def load_epigraph(
 
     dss = []
     for path in paths:
-        ds = load_epigraph_source(path, k)
+        ds = load_entigraph_source(path, k)
         textbook = path.split("/")[1]
         ds = ds.add_column("textbook", [textbook] * len(ds))
         dss.append(ds)
@@ -142,7 +142,7 @@ def load_epigraph(
     ds.save_to_disk(processed_path)
     return ds
 
-def load_epigraph_source(source_path, k):
+def load_entigraph_source(source_path, k):
     relations = []
     for j in Path(source_path).glob("relations_*.jsonl"):
         with open(j, "r") as f:
