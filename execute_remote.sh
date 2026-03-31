@@ -13,10 +13,6 @@ rsync -a \
     --exclude='*.json' \
     . ~/gen_ai
 
-mkdir -p ~/gen_ai/huggingface/relations_dataset/
-rsync -a \
-    --exclude='cache*' \
-    ./huggingface/relations_dataset/ ~/gen_ai/huggingface/relations_dataset/
 
 # ssh to target machine
 # clean data folder

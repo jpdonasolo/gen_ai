@@ -15,7 +15,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-CONFIG_DIR="${CONFIG_DIR:-'configs/instruct'}"
+CONFIG_DIR="${CONFIG_DIR:-configs/instruct}"
 EVAL_BASE="${EVAL_HOME:-$HOME}"
 LOCAL_EVAL_RESULTS_DIR="${LOCAL_EVAL_RESULTS_DIR:-${SCRIPT_DIR}/eval_results}"
 
@@ -23,7 +23,7 @@ LOCAL_EVAL_RESULTS_DIR="${LOCAL_EVAL_RESULTS_DIR:-${SCRIPT_DIR}/eval_results}"
 # Machine list (keep in sync with execute_entities.sh)
 ############################################
 MACHINES=(
-    autruche bengali coucou dindon 
+    bengali coucou dindon 
     faisan gelinotte hibou harpie 
     kamiche linotte loriol mouette 
     nandou ombrette perdrix rouloul
@@ -36,11 +36,11 @@ MACHINES=(
 if [[ $# -gt 0 ]]; then
     CONFIGS=("$@")
 else
-    mapfile -t CONFIGS < <(ls -1 "${CONFIG_DIR}"/instruct*.yaml 2>/dev/null | sort || true)
+    mapfile -t CONFIGS < <(ls -1 "${CONFIG_DIR}"/instruct*full.yaml 2>/dev/null | sort || true)
 fi
 
 if [[ ${#CONFIGS[@]} -eq 0 ]]; then
-    echo "No configs to run. Pass yaml paths as arguments or ensure ${CONFIG_DIR}/instruct*.yaml exist."
+    echo "No configs to run. Pass yaml paths as arguments or ensure ${CONFIG_DIR}/instruct*full.yaml exist."
     exit 1
 fi
 
