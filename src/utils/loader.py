@@ -97,6 +97,7 @@ def load_epigraph(
     load_full: bool = False,
     processor=None,
     max_len: int | None = None,
+    recalculate: bool = False,
 ) -> datasets.Dataset:
     if k >= 200:
         processed_path = os.path.join(cache_dir, f"relations_dataset")
@@ -109,7 +110,7 @@ def load_epigraph(
     if max_len is not None:
         processed_path = processed_path + f"_maxlen{max_len}"
 
-    if os.path.exists(processed_path):
+    if os.path.exists(processed_path) and not recalculate:
         return datasets.load_from_disk(processed_path)
 
     if load_full:
@@ -119,8 +120,14 @@ def load_epigraph(
 
     dss = []
     for path in paths:
-        dss.append(load_epigraph_source(path, k))
+        ds = load_epigraph_source(path, k)
+        textbook = path.split("/")[1]
+        ds = ds.add_column("textbook", [textbook] * len(ds))
+        dss.append(ds)
     ds = datasets.concatenate_datasets(dss)
+
+    if recalculate:
+        ds.cleanup_cache_files()
 
     if processor is not None and max_len is not None:
         tokenizer = processor.tokenizer
